@@ -1,41 +1,39 @@
 # Project State
 
 **Last Updated:** 2026-02-05
-**Phase:** 2 - Geometry Analysis
-**Status:** Complete
+**Phase:** 3 - Stock Suggestions
+**Status:** In Progress
 
 ## Current Position
 
-Phase: 2 of 5 (Geometry Analysis)
-Plan: 03 of 03 in phase
-Status: Phase complete
-Last activity: 2026-02-05 - Completed 02-03-PLAN.md
+Phase: 3 of 5 (Stock Suggestions)
+Plan: 01 of 03 in phase
+Status: In progress
+Last activity: 2026-02-05 - Completed 03-01-PLAN.md
 
-Progress: [####------] 40% (4/10 plans estimated)
+Progress: [#####-----] 50% (5/10 plans estimated)
 
-### Phase 2 Progress
+### Phase 3 Progress
 
 | Plan | Name | Status |
 |------|------|--------|
-| 02-01 | Feature detection foundation | Complete |
-| 02-02 | Confidence scoring and slot classification | Complete |
-| 02-03 | Orientation analysis and setup sequences | Complete |
+| 03-01 | Stock calculation foundation | Complete |
+| 03-02 | Stock type detection | Pending |
+| 03-03 | MCP tool integration | Pending |
 
-### What Was Delivered (Phase 2 Plan 03)
+### What Was Delivered (Phase 3 Plan 01)
 
-1. **orientation_analyzer.py** with OrientationAnalyzer class (264 lines)
-2. **geometry_helpers.py** with calculate_minimum_tool_radii (80% rule) and analyze_feature_accessibility
-3. **Weighted orientation scoring** - 60% feature access, 30% setup count, 10% stability
-4. **Setup sequences** with step-by-step machining instructions
-5. **Unreachable feature detection** with reasons per orientation
-6. **orientation_analysis_source** indicator (feature_based vs bounding_box)
+1. **stock_sizes.py** with metric and imperial standard size tables
+2. **stock_calculator.py** with calculate_stock_dimensions function
+3. **round_to_standard_size** function for next-larger-size rounding
+4. **DEFAULT_OFFSETS** constant (5mm XY, 2.5mm Z per CONTEXT.md)
+5. Explicit unit format `{"value": X, "unit": "mm"}` for all dimensions
 
-### Key Files Modified
+### Key Files Created
 
-- `Fusion-360-MCP-Server/geometry_analysis/geometry_helpers.py` - Tool radius and accessibility (179 lines)
-- `Fusion-360-MCP-Server/geometry_analysis/orientation_analyzer.py` - OrientationAnalyzer class (264 lines)
-- `Fusion-360-MCP-Server/geometry_analysis/__init__.py` - Updated exports
-- `Fusion-360-MCP-Server/cam_operations.py` - Integrated orientation and radius analysis
+- `Fusion-360-MCP-Server/stock_suggestions/__init__.py` - Module exports (45 lines)
+- `Fusion-360-MCP-Server/stock_suggestions/stock_sizes.py` - Size tables and rounding (134 lines)
+- `Fusion-360-MCP-Server/stock_suggestions/stock_calculator.py` - Dimension calculation (126 lines)
 
 ## Accumulated Decisions
 
@@ -54,6 +52,8 @@ Progress: [####------] 40% (4/10 plans estimated)
 | 02-03 | Scoring weights: 60/30/10 (access/setup/stability) | Per RESEARCH.md recommendation |
 | 02-03 | Conservative accessibility analysis | Assume reachable unless clearly flagged |
 | 02-03 | 80% rule for tool radius | Industry standard for internal corners |
+| 03-01 | XY offset applied to all 4 sides (2x per axis) | Standard practice for facing material |
+| 03-01 | Z offset applied to top only (1x) | Bottom typically fixture reference surface |
 
 ## Lessons Learned
 
@@ -72,15 +72,19 @@ Progress: [####------] 40% (4/10 plans estimated)
 6. **Weighted orientation scoring** - Provides ranked alternatives for workholding planning
 7. **Conservative accessibility** - Better to assume reachable than over-flag as unreachable
 
+### Phase 3
+1. **Fusion API coordinates in cm** - Multiply by 10 to convert to mm
+
 ## Session Continuity
 
-Last session: 2026-02-05T21:59:20Z
-Stopped at: Completed 02-03-PLAN.md (Phase 2 complete)
+Last session: 2026-02-05T22:48:00Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None
 
 ## Next Steps
 
-Phase 2 (Geometry Analysis) is complete. Ready for Phase 3:
-- **Phase 3**: Toolpath Suggestions - Stock setup, operation strategies, feeds/speeds
+Continue Phase 3:
+- **03-02**: Stock type detection (cylindrical parts, workholding suggestions)
+- **03-03**: MCP tool integration (suggest_stock_setup tool)
 
-Command: `/gsd:plan-phase 3`
+Command: `/gsd:execute-phase 3`
