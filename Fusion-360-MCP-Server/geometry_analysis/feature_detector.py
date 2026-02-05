@@ -9,6 +9,7 @@ Each detected feature includes:
 - Fusion entityTokens for programmatic selection
 - Confidence scores and reasoning
 - needs_review flag for ambiguous cases
+- Slot classification via aspect ratio heuristic (>3.0)
 """
 
 from typing import List, Dict, Any, Optional
@@ -20,6 +21,20 @@ try:
     FUSION_CAM_AVAILABLE = True
 except ImportError:
     FUSION_CAM_AVAILABLE = False
+
+# Confidence scoring module
+from .confidence_scorer import calculate_confidence, needs_review, get_ambiguity_flags
+
+
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
+DEFAULT_CONFIG = {
+    "slot_aspect_ratio_threshold": 3.0,      # Aspect ratio above this = slot
+    "slot_ambiguous_range": (2.5, 3.5),      # Range where classification is uncertain
+    "min_feature_size_mm": 0.5               # Minimum feature size to detect
+}
 
 
 def _to_mm_unit(cm_value: float) -> Dict[str, Any]:
@@ -137,21 +152,36 @@ class FeatureDetector:
                             if hasattr(face, 'entityToken'):
                                 face_tokens.append(face.entityToken)
 
-                    # Calculate confidence based on segment complexity
-                    # Simple holes (1 segment): HIGH confidence
-                    # Multi-segment holes: reduced confidence
-                    # Complex holes (>3 segments): needs review
-                    if segment_count <= 1:
-                        confidence = 0.95
-                        reasoning = "Simple cylindrical hole detected by Fusion API"
-                    elif segment_count <= 3:
-                        confidence = 0.85
-                        reasoning = f"Multi-segment hole ({segment_count} segments) detected by Fusion API"
-                    else:
-                        confidence = 0.75
-                        reasoning = f"Complex hole ({segment_count} segments) - may be counterbore/countersink/step hole"
+                    # Calculate confidence using confidence_scorer module
+                    # Complexity based on segment count (each segment adds 2 complexity)
+                    complexity = min(segment_count * 2, 10)
 
-                    needs_review = segment_count > 3
+                    # Get ambiguity flags for holes
+                    depth_mm = total_depth_cm * 10 if total_depth_cm > 0 else None
+                    diameter_mm = diameter_cm * 10 if diameter_cm else None
+                    ambiguity_metrics = {
+                        "segment_count": segment_count,
+                    }
+                    if depth_mm and diameter_mm:
+                        ambiguity_metrics["depth"] = depth_mm
+                        ambiguity_metrics["diameter"] = diameter_mm
+
+                    ambiguity_flags = get_ambiguity_flags("hole", ambiguity_metrics)
+                    confidence_score, reasoning_text = calculate_confidence(
+                        "fusion_api",
+                        complexity,
+                        ambiguity_flags
+                    )
+
+                    # Enhance reasoning with specific hole info
+                    if segment_count <= 1:
+                        reasoning_text = f"Simple cylindrical hole; {reasoning_text}"
+                    elif segment_count <= 3:
+                        reasoning_text = f"Multi-segment hole ({segment_count} segments); {reasoning_text}"
+                    else:
+                        reasoning_text = f"Complex hole ({segment_count} segments, may be counterbore/countersink); {reasoning_text}"
+
+                    review_needed = needs_review(confidence_score)
 
                     feature = {
                         "type": "hole",
@@ -160,9 +190,9 @@ class FeatureDetector:
                         "segment_count": segment_count,
                         "segments": segments if segments else None,
                         "fusion_faces": face_tokens,
-                        "confidence": confidence,
-                        "reasoning": reasoning,
-                        "needs_review": needs_review
+                        "confidence": confidence_score,
+                        "reasoning": reasoning_text,
+                        "needs_review": review_needed
                     }
 
                     features.append(feature)
@@ -195,19 +225,28 @@ class FeatureDetector:
     def detect_pockets(
         self,
         body,
-        tool_direction=None
+        tool_direction=None,
+        config: Dict[str, Any] = None
     ) -> List[Dict[str, Any]]:
         """
         Detect all pockets in a body using Fusion's RecognizedPocket API.
+
+        Classifies pockets vs slots using aspect ratio heuristic:
+        - aspect_ratio > 3.0 -> type="slot"
+        - aspect_ratio <= 3.0 -> type="pocket"
+        - aspect_ratio in (2.5, 3.5) -> ambiguous, needs_review=true
 
         Args:
             body: BRepBody to analyze
             tool_direction: Vector3D for tool approach direction.
                            Default: (0, 0, -1) for Z-down machining.
+            config: Optional configuration dict. Defaults to DEFAULT_CONFIG.
+                   Keys: slot_aspect_ratio_threshold, slot_ambiguous_range
 
         Returns:
-            List of pocket feature dicts, each containing:
-            - type: "pocket"
+            List of pocket/slot feature dicts, each containing:
+            - type: "pocket" or "slot"
+            - aspect_ratio: float (max/min of length/width)
             - depth: {"value": float, "unit": "mm"}
             - is_through: bool
             - dimensions: bounding box info
@@ -220,6 +259,11 @@ class FeatureDetector:
         """
         if not self._api_available:
             return []
+
+        # Use provided config or default
+        cfg = config if config else DEFAULT_CONFIG
+        slot_threshold = cfg.get("slot_aspect_ratio_threshold", 3.0)
+        slot_ambiguous_range = cfg.get("slot_ambiguous_range", (2.5, 3.5))
 
         features = []
 
@@ -272,10 +316,25 @@ class FeatureDetector:
 
                     # Build dimensions dict from bounding box
                     dimensions = None
+                    aspect_ratio = 1.0
+                    width_mm = 0.0
+                    length_mm = 0.0
+                    depth_mm = depth_cm * 10 if depth_cm else 0.0
+
                     if min_x != float('inf'):
                         width_cm = max_x - min_x
                         length_cm = max_y - min_y
                         height_cm = max_z - min_z
+
+                        width_mm = width_cm * 10
+                        length_mm = length_cm * 10
+
+                        # Calculate aspect ratio for slot classification
+                        # aspect_ratio = max(length, width) / min(length, width)
+                        if width_mm > 0 and length_mm > 0:
+                            max_dim = max(length_mm, width_mm)
+                            min_dim = min(length_mm, width_mm)
+                            aspect_ratio = round(max_dim / min_dim, 2) if min_dim > 0 else 1.0
 
                         dimensions = {
                             "width": _to_mm_unit(width_cm),
@@ -295,26 +354,54 @@ class FeatureDetector:
                             }
                         }
 
-                    # Calculate confidence based on detection quality
-                    if is_through:
-                        confidence = 0.90
-                        reasoning = "Through pocket detected by Fusion API"
+                    # Classify as slot or pocket based on aspect ratio
+                    # Per CONTEXT.md: slot if aspect_ratio > 3.0
+                    if aspect_ratio > slot_threshold:
+                        feature_type = "slot"
                     else:
-                        confidence = 0.95
-                        reasoning = "Closed pocket detected by Fusion API"
+                        feature_type = "pocket"
 
-                    # Flag ambiguous cases
-                    needs_review = False
+                    # Get ambiguity flags for slot/pocket classification
+                    ambiguity_metrics = {"aspect_ratio": aspect_ratio}
+                    if depth_mm > 0 and min(width_mm, length_mm) > 0:
+                        # Use the smaller dimension as the "diameter" equivalent
+                        ambiguity_metrics["depth"] = depth_mm
+                        ambiguity_metrics["diameter"] = min(width_mm, length_mm)
+
+                    ambiguity_flags = get_ambiguity_flags(feature_type, ambiguity_metrics)
+
+                    # Calculate geometry complexity (0 for simple, higher for complex)
+                    # Through pockets are slightly more complex
+                    complexity = 2 if is_through else 0
+
+                    # Calculate confidence using confidence_scorer
+                    confidence_score, reasoning_text = calculate_confidence(
+                        "fusion_api",
+                        complexity,
+                        ambiguity_flags
+                    )
+
+                    # Enhance reasoning with feature-specific info
+                    if feature_type == "slot":
+                        reasoning_text = f"Slot classified (aspect ratio {aspect_ratio}:1 > {slot_threshold}); {reasoning_text}"
+                    else:
+                        reasoning_text = f"Pocket classified (aspect ratio {aspect_ratio}:1); {reasoning_text}"
+
+                    if is_through:
+                        reasoning_text = f"Through feature; {reasoning_text}"
+
+                    review_needed = needs_review(confidence_score)
 
                     feature = {
-                        "type": "pocket",
+                        "type": feature_type,
+                        "aspect_ratio": aspect_ratio,
                         "depth": _to_mm_unit(depth_cm) if depth_cm else None,
                         "is_through": is_through,
                         "dimensions": dimensions,
                         "fusion_faces": face_tokens,
-                        "confidence": confidence,
-                        "reasoning": reasoning,
-                        "needs_review": needs_review
+                        "confidence": confidence_score,
+                        "reasoning": reasoning_text,
+                        "needs_review": review_needed
                     }
 
                     features.append(feature)
