@@ -27,6 +27,13 @@ try:
 except ImportError:
     FUSION_AVAILABLE = False
 
+# Feature detection module - provides RecognizedHole/RecognizedPocket wrappers
+try:
+    from geometry_analysis.feature_detector import FeatureDetector
+    FEATURE_DETECTOR_AVAILABLE = True
+except ImportError:
+    FEATURE_DETECTOR_AVAILABLE = False
+
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -686,13 +693,45 @@ def handle_analyze_geometry_for_cam(arguments: dict) -> dict:
                         "total_features_detected": len(features)
                     }
 
-                    # Limit features in output to avoid huge responses
-                    body_result["features"] = features[:20]
+                    # Keep face-based features for backward compatibility
+                    body_result["face_features"] = features[:20]
                     if len(features) > 20:
-                        body_result["features_truncated"] = True
-                        body_result["total_features"] = len(features)
+                        body_result["face_features_truncated"] = True
+                        body_result["total_face_features"] = len(features)
 
                     body_result["min_internal_radius_mm"] = round(min_radius, 3) if min_radius != float('inf') else None
+
+                    # Use FeatureDetector for production-ready feature recognition
+                    # Provides holes and pockets from Fusion's RecognizedHole/RecognizedPocket APIs
+                    if FEATURE_DETECTOR_AVAILABLE and analysis_type == 'full':
+                        try:
+                            detector = FeatureDetector()
+                            if detector.is_available:
+                                # Detect holes using Fusion's RecognizedHole API
+                                detected_holes = detector.detect_holes(body)
+
+                                # Detect pockets using Fusion's RecognizedPocket API
+                                detected_pockets = detector.detect_pockets(body)
+
+                                # Add recognized features to result
+                                body_result["recognized_features"] = {
+                                    "holes": detected_holes,
+                                    "pockets": detected_pockets,
+                                    "total_holes": len([h for h in detected_holes if h.get("type") == "hole"]),
+                                    "total_pockets": len([p for p in detected_pockets if p.get("type") == "pocket"])
+                                }
+                                body_result["feature_detection_source"] = "fusion_api"
+                            else:
+                                body_result["feature_detection_source"] = "face_analysis"
+                                body_result["recognized_features"] = None
+                        except Exception as detector_error:
+                            # Fallback to face analysis if detector fails
+                            body_result["feature_detection_source"] = "face_analysis"
+                            body_result["recognized_features"] = None
+                            body_result["feature_detector_error"] = str(detector_error)
+                    else:
+                        body_result["feature_detection_source"] = "face_analysis"
+                        body_result["recognized_features"] = None
 
                 # Orientation suggestions based on bounding box
                 dims = body_result["bounding_box"]
