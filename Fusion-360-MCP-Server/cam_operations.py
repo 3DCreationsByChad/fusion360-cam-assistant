@@ -39,6 +39,28 @@ def _get_app():
     return adsk.core.Application.get()
 
 
+def _to_mm(cm_value: float) -> Optional[dict]:
+    """
+    Convert internal cm value to mm with explicit units.
+
+    All Fusion 360 API values are internally in cm. This helper converts
+    to mm and returns an explicit unit object per CONTEXT.md decision:
+    {"value": X, "unit": "mm"}
+
+    Args:
+        cm_value: Value in centimeters from Fusion API
+
+    Returns:
+        Dict with value and unit, or None if input is None
+    """
+    if cm_value is None:
+        return None
+    return {
+        "value": round(cm_value * 10, 3),
+        "unit": "mm"
+    }
+
+
 def _get_cam_product():
     """Get CAM product from active document, if available."""
     app = _get_app()
@@ -131,12 +153,26 @@ def handle_get_cam_state(arguments: dict) -> dict:
                         "type": "fixed_box",
                         "mode": "FixedBoxStock"
                     }
-                    # Try to get dimensions if available
+                    # Get dimensions with explicit units
                     try:
+                        params = setup.parameters
+                        x_param = params.itemByName("job_stockFixedX")
+                        y_param = params.itemByName("job_stockFixedY")
+                        z_param = params.itemByName("job_stockFixedZ")
+
                         setup_info["stock"]["dimensions"] = {
-                            "x": setup.parameters.itemByName("job_stockFixedX").expression,
-                            "y": setup.parameters.itemByName("job_stockFixedY").expression,
-                            "z": setup.parameters.itemByName("job_stockFixedZ").expression
+                            "x": {
+                                "expression": x_param.expression if x_param else None,
+                                "value": _to_mm(x_param.value.value) if x_param and x_param.value else None
+                            },
+                            "y": {
+                                "expression": y_param.expression if y_param else None,
+                                "value": _to_mm(y_param.value.value) if y_param and y_param.value else None
+                            },
+                            "z": {
+                                "expression": z_param.expression if z_param else None,
+                                "value": _to_mm(z_param.value.value) if z_param and z_param.value else None
+                            }
                         }
                     except:
                         pass
@@ -146,12 +182,26 @@ def handle_get_cam_state(arguments: dict) -> dict:
                         "type": "relative_box",
                         "mode": "RelativeBoxStock"
                     }
-                    # Try to get offsets
+                    # Get offsets with explicit units
                     try:
+                        params = setup.parameters
+                        side_param = params.itemByName("job_stockOffsetSides")
+                        top_param = params.itemByName("job_stockOffsetTop")
+                        bottom_param = params.itemByName("job_stockOffsetBottom")
+
                         setup_info["stock"]["offsets"] = {
-                            "side": setup.parameters.itemByName("job_stockOffsetSides").expression,
-                            "top": setup.parameters.itemByName("job_stockOffsetTop").expression,
-                            "bottom": setup.parameters.itemByName("job_stockOffsetBottom").expression
+                            "side": {
+                                "expression": side_param.expression if side_param else None,
+                                "value": _to_mm(side_param.value.value) if side_param and side_param.value else None
+                            },
+                            "top": {
+                                "expression": top_param.expression if top_param else None,
+                                "value": _to_mm(top_param.value.value) if top_param and top_param.value else None
+                            },
+                            "bottom": {
+                                "expression": bottom_param.expression if bottom_param else None,
+                                "value": _to_mm(bottom_param.value.value) if bottom_param and bottom_param.value else None
+                            }
                         }
                     except:
                         pass
@@ -167,15 +217,67 @@ def handle_get_cam_state(arguments: dict) -> dict:
                         "type": "cylinder",
                         "mode": "CylinderStock"
                     }
+                    # Try to get cylinder dimensions
+                    try:
+                        params = setup.parameters
+                        diameter_param = params.itemByName("job_stockCylinderDiameter")
+                        height_param = params.itemByName("job_stockCylinderHeight")
+
+                        if diameter_param or height_param:
+                            setup_info["stock"]["dimensions"] = {}
+                            if diameter_param:
+                                setup_info["stock"]["dimensions"]["diameter"] = {
+                                    "expression": diameter_param.expression,
+                                    "value": _to_mm(diameter_param.value.value) if diameter_param.value else None
+                                }
+                            if height_param:
+                                setup_info["stock"]["dimensions"]["height"] = {
+                                    "expression": height_param.expression,
+                                    "value": _to_mm(height_param.value.value) if height_param.value else None
+                                }
+                    except:
+                        pass
 
             except Exception as e:
                 setup_info["stock"] = {"error": str(e)}
 
-            # Get WCS origin info
+            # Get WCS (Work Coordinate System) info per CONTEXT.md decision
             try:
-                origin = setup.parameters.itemByName("job_stockZPosition")
-                if origin:
-                    setup_info["wcs_origin"] = origin.expression
+                wcs_info = {}
+                params = setup.parameters
+
+                # Z position (stock top/bottom) - most critical for CAM planning
+                z_pos = params.itemByName("job_stockZPosition")
+                if z_pos:
+                    wcs_info["z_origin"] = {
+                        "expression": z_pos.expression,
+                        "value": _to_mm(z_pos.value.value) if z_pos.value else None
+                    }
+
+                # Try to get XY origin if available
+                try:
+                    wcs_point = params.itemByName("job_wcsOriginPoint")
+                    if wcs_point and wcs_point.value:
+                        origin_point = wcs_point.value
+                        if hasattr(origin_point, 'x'):
+                            wcs_info["origin_point"] = {
+                                "x": _to_mm(origin_point.x),
+                                "y": _to_mm(origin_point.y),
+                                "z": _to_mm(origin_point.z)
+                            }
+                except:
+                    pass
+
+                # Try to get orientation info if available
+                try:
+                    wcs_orientation = params.itemByName("job_wcsOrientation")
+                    if wcs_orientation:
+                        wcs_info["orientation"] = wcs_orientation.expression
+                except:
+                    pass
+
+                if wcs_info:
+                    setup_info["wcs"] = wcs_info
             except:
                 pass
 
@@ -197,15 +299,18 @@ def handle_get_cam_state(arguments: dict) -> dict:
                 except:
                     pass
 
-                # Try to get tool info
+                # Try to get tool info with explicit units
                 try:
                     tool = op.tool
                     if tool:
                         op_info["tool"] = {
                             "description": tool.description,
                             "type": tool.type.toString() if hasattr(tool.type, 'toString') else str(tool.type),
-                            "diameter": tool.diameter * 10  # cm to mm
+                            "diameter": _to_mm(tool.diameter)
                         }
+                        # Add flute count if available
+                        if hasattr(tool, 'numberOfFlutes'):
+                            op_info["tool"]["flutes"] = tool.numberOfFlutes
                 except:
                     pass
 
@@ -341,8 +446,9 @@ def handle_get_tool_library(arguments: dict) -> dict:
                     except:
                         tool_type_str = "unknown"
 
-                    # Diameter in mm (Fusion uses cm internally)
-                    diameter_mm = tool.diameter * 10 if hasattr(tool, 'diameter') else 0
+                    # Diameter in mm for filtering (Fusion uses cm internally)
+                    diameter_cm = tool.diameter if hasattr(tool, 'diameter') else 0
+                    diameter_mm = diameter_cm * 10
 
                     # Apply filters
                     if type_filter:
@@ -354,35 +460,38 @@ def handle_get_tool_library(arguments: dict) -> dict:
                         if diameter_mm < diameter_range[0] or diameter_mm > diameter_range[1]:
                             continue
 
-                    # Build tool info
+                    # Build tool info with explicit units per CONTEXT.md decision
                     tool_info = {
                         "description": tool.description if hasattr(tool, 'description') else "",
                         "type": tool_type_str,
-                        "diameter_mm": round(diameter_mm, 3),
+                        "diameter": _to_mm(diameter_cm),
                         "library": lib.name
                     }
 
-                    # Add additional properties if available
+                    # Add additional properties with explicit units
                     if hasattr(tool, 'numberOfFlutes'):
                         tool_info["flutes"] = tool.numberOfFlutes
 
                     if hasattr(tool, 'fluteLength'):
-                        tool_info["flute_length_mm"] = round(tool.fluteLength * 10, 2)
+                        tool_info["flute_length"] = _to_mm(tool.fluteLength)
 
                     if hasattr(tool, 'overallLength'):
-                        tool_info["overall_length_mm"] = round(tool.overallLength * 10, 2)
+                        tool_info["overall_length"] = _to_mm(tool.overallLength)
 
                     if hasattr(tool, 'shaftDiameter'):
-                        tool_info["shaft_diameter_mm"] = round(tool.shaftDiameter * 10, 3)
+                        tool_info["shaft_diameter"] = _to_mm(tool.shaftDiameter)
 
                     if hasattr(tool, 'bodyLength'):
-                        tool_info["body_length_mm"] = round(tool.bodyLength * 10, 2)
+                        tool_info["body_length"] = _to_mm(tool.bodyLength)
 
                     if hasattr(tool, 'cornerRadius'):
-                        tool_info["corner_radius_mm"] = round(tool.cornerRadius * 10, 3)
+                        tool_info["corner_radius"] = _to_mm(tool.cornerRadius)
 
                     if hasattr(tool, 'taperAngle'):
-                        tool_info["taper_angle"] = tool.taperAngle
+                        tool_info["taper_angle"] = {
+                            "value": round(tool.taperAngle, 2),
+                            "unit": "deg"
+                        }
 
                     if hasattr(tool, 'productId'):
                         tool_info["product_id"] = tool.productId
@@ -396,6 +505,49 @@ def handle_get_tool_library(arguments: dict) -> dict:
                             tool_info["tool_material"] = str(tool.material)
                         except:
                             pass
+
+                    # Additional tool properties per CONTEXT.md
+                    # Helix angle (if available)
+                    try:
+                        if hasattr(tool, 'helixAngle'):
+                            helix = tool.helixAngle
+                            if helix is not None:
+                                tool_info["helix_angle"] = {
+                                    "value": round(helix, 2),
+                                    "unit": "deg"
+                                }
+                    except:
+                        pass
+
+                    # Coating (if available)
+                    try:
+                        if hasattr(tool, 'coating'):
+                            coating = tool.coating
+                            if coating:
+                                tool_info["coating"] = str(coating)
+                    except:
+                        pass
+
+                    # Coolant support (if available)
+                    try:
+                        if hasattr(tool, 'coolantSupport'):
+                            coolant = tool.coolantSupport
+                            if coolant is not None:
+                                tool_info["coolant_support"] = str(coolant)
+                    except:
+                        pass
+
+                    # Tip angle for drills (if available)
+                    try:
+                        if hasattr(tool, 'tipAngle'):
+                            tip_angle = tool.tipAngle
+                            if tip_angle is not None:
+                                tool_info["tip_angle"] = {
+                                    "value": round(tip_angle, 2),
+                                    "unit": "deg"
+                                }
+                    except:
+                        pass
 
                     tools_data.append(tool_info)
 
