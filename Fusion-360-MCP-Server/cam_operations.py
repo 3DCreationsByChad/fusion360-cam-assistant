@@ -138,7 +138,7 @@ def handle_get_cam_state(arguments: dict) -> dict:
         for setup in cam.setups:
             setup_info = {
                 "name": setup.name,
-                "is_active": setup == cam.activeSetup,
+                "is_active": getattr(setup, 'isActive', None),  # May be None if API doesn't expose
                 "operations": [],
                 "stock": None,
                 "wcs_origin": None
