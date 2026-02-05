@@ -27,9 +27,14 @@ try:
 except ImportError:
     FUSION_AVAILABLE = False
 
-# Feature detection module - provides RecognizedHole/RecognizedPocket wrappers
+# Feature detection and geometry analysis modules
+# Provides RecognizedHole/RecognizedPocket wrappers plus orientation analysis
 try:
-    from geometry_analysis.feature_detector import FeatureDetector
+    from geometry_analysis import (
+        FeatureDetector,
+        OrientationAnalyzer,
+        calculate_minimum_tool_radii
+    )
     FEATURE_DETECTOR_AVAILABLE = True
 except ImportError:
     FEATURE_DETECTOR_AVAILABLE = False
@@ -228,6 +233,85 @@ def _format_error(message: str, details: str = None) -> Dict:
     if details:
         error_data["details"] = details
     return _format_response(error_data, is_error=True)
+
+
+def _group_by_machining_priority(features: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Group features by machining priority per CONTEXT.md decision.
+
+    Priority order:
+    1. Drilling operations (small holes, spotting)
+    2. Roughing operations (deep pockets, large material removal)
+    3. Finishing operations (shallow features, fine details)
+
+    Args:
+        features: List of feature dicts with type, diameter, depth fields
+
+    Returns:
+        List of priority groups (only non-empty groups), each containing:
+        - name: operation category name
+        - priority: int (1-3)
+        - description: human-readable description
+        - features: list of features in this priority group
+    """
+    priority_groups = {
+        1: {
+            "name": "drilling_operations",
+            "priority": 1,
+            "description": "Holes suitable for drilling",
+            "features": []
+        },
+        2: {
+            "name": "roughing_operations",
+            "priority": 2,
+            "description": "Features requiring significant material removal",
+            "features": []
+        },
+        3: {
+            "name": "finishing_operations",
+            "priority": 3,
+            "description": "Shallow features and fine details",
+            "features": []
+        }
+    }
+
+    for feature in features:
+        # Get feature properties for priority classification
+        ftype = feature.get("type", "")
+
+        # Extract diameter value (handles both dict format and raw value)
+        diameter = 0
+        diameter_data = feature.get("diameter")
+        if isinstance(diameter_data, dict):
+            diameter = diameter_data.get("value", 0) or 0
+        elif isinstance(diameter_data, (int, float)):
+            diameter = diameter_data
+
+        # Extract depth value (handles both dict format and raw value)
+        depth = 0
+        depth_data = feature.get("depth")
+        if isinstance(depth_data, dict):
+            depth = depth_data.get("value", 0) or 0
+        elif isinstance(depth_data, (int, float)):
+            depth = depth_data
+
+        # Priority classification heuristics
+        if ftype == "hole" and diameter < 12.0:
+            # Small holes (< 12mm diameter): suitable for drilling
+            priority = 1
+        elif ftype in ["pocket", "slot"] and depth > 10.0:
+            # Deep pockets/slots (> 10mm depth): require roughing
+            priority = 2
+        else:
+            # Everything else: finishing operations
+            # - Large holes (>= 12mm) may need boring/helical milling
+            # - Shallow pockets/slots (< 10mm) are finishing
+            priority = 3
+
+        priority_groups[priority]["features"].append(feature)
+
+    # Return only non-empty groups, sorted by priority
+    return [group for _, group in sorted(priority_groups.items()) if group["features"]]
 
 
 # =============================================================================
@@ -702,7 +786,7 @@ def handle_analyze_geometry_for_cam(arguments: dict) -> dict:
                     body_result["min_internal_radius_mm"] = round(min_radius, 3) if min_radius != float('inf') else None
 
                     # Use FeatureDetector for production-ready feature recognition
-                    # Provides holes and pockets from Fusion's RecognizedHole/RecognizedPocket APIs
+                    # Provides holes and pockets/slots from Fusion's RecognizedHole/RecognizedPocket APIs
                     if FEATURE_DETECTOR_AVAILABLE and analysis_type == 'full':
                         try:
                             detector = FeatureDetector()
@@ -710,28 +794,60 @@ def handle_analyze_geometry_for_cam(arguments: dict) -> dict:
                                 # Detect holes using Fusion's RecognizedHole API
                                 detected_holes = detector.detect_holes(body)
 
-                                # Detect pockets using Fusion's RecognizedPocket API
+                                # Detect pockets/slots using Fusion's RecognizedPocket API
+                                # Note: slots are classified by aspect_ratio > 3.0
                                 detected_pockets = detector.detect_pockets(body)
+
+                                # Combine all recognized features for priority grouping
+                                all_recognized_features = detected_holes + detected_pockets
+
+                                # Count features by type (holes, pockets, slots)
+                                hole_count = len([f for f in detected_holes if f.get("type") == "hole"])
+                                pocket_count = len([f for f in detected_pockets if f.get("type") == "pocket"])
+                                slot_count = len([f for f in detected_pockets if f.get("type") == "slot"])
+
+                                # Group features by machining priority (drilling, roughing, finishing)
+                                features_by_priority = _group_by_machining_priority(all_recognized_features)
 
                                 # Add recognized features to result
                                 body_result["recognized_features"] = {
                                     "holes": detected_holes,
-                                    "pockets": detected_pockets,
-                                    "total_holes": len([h for h in detected_holes if h.get("type") == "hole"]),
-                                    "total_pockets": len([p for p in detected_pockets if p.get("type") == "pocket"])
+                                    "pockets": [p for p in detected_pockets if p.get("type") == "pocket"],
+                                    "slots": [s for s in detected_pockets if s.get("type") == "slot"],
+                                    "total_holes": hole_count,
+                                    "total_pockets": pocket_count,
+                                    "total_slots": slot_count
                                 }
+
+                                # Add priority-grouped features for CAM planning
+                                body_result["features_by_priority"] = features_by_priority
+
+                                # Add feature count summary
+                                body_result["feature_count"] = {
+                                    "holes": hole_count,
+                                    "pockets": pocket_count,
+                                    "slots": slot_count,
+                                    "total": len(all_recognized_features)
+                                }
+
                                 body_result["feature_detection_source"] = "fusion_api"
                             else:
                                 body_result["feature_detection_source"] = "face_analysis"
                                 body_result["recognized_features"] = None
+                                body_result["features_by_priority"] = None
+                                body_result["feature_count"] = None
                         except Exception as detector_error:
                             # Fallback to face analysis if detector fails
                             body_result["feature_detection_source"] = "face_analysis"
                             body_result["recognized_features"] = None
+                            body_result["features_by_priority"] = None
+                            body_result["feature_count"] = None
                             body_result["feature_detector_error"] = str(detector_error)
                     else:
                         body_result["feature_detection_source"] = "face_analysis"
                         body_result["recognized_features"] = None
+                        body_result["features_by_priority"] = None
+                        body_result["feature_count"] = None
 
                 # Orientation suggestions based on bounding box
                 dims = body_result["bounding_box"]
