@@ -332,24 +332,14 @@ def handle_get_cam_state(arguments: dict) -> dict:
 
             setups_data.append(setup_info)
 
-        # Get post-processor info if set
-        post_info = None
-        try:
-            if cam.activeSetup:
-                post = cam.activeSetup.postProcess
-                if post:
-                    post_info = {
-                        "name": post.name if hasattr(post, 'name') else None
-                    }
-        except:
-            pass
+        # Note: CAM API doesn't expose activeSetup property
+        # Post-processor info would need to be queried per-setup if needed
 
         result = {
             "has_cam_workspace": True,
             "setup_count": len(setups_data),
             "setups": setups_data,
-            "active_setup": cam.activeSetup.name if cam.activeSetup else None,
-            "post_processor": post_info
+            "active_setup": None  # CAM API doesn't expose which setup is active
         }
 
         return _format_response(result)
