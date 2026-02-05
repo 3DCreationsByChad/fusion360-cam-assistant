@@ -831,6 +831,31 @@ def handle_analyze_geometry_for_cam(arguments: dict) -> dict:
                                 }
 
                                 body_result["feature_detection_source"] = "fusion_api"
+
+                                # Enhanced orientation analysis with setup sequences
+                                # Uses OrientationAnalyzer when features are available
+                                if all_recognized_features:
+                                    try:
+                                        analyzer = OrientationAnalyzer(all_recognized_features)
+                                        enhanced_orientations = analyzer.suggest_orientations(body)
+                                        body_result["suggested_orientations"] = enhanced_orientations
+                                        body_result["orientation_analysis_source"] = "feature_based"
+                                    except Exception as orient_error:
+                                        body_result["orientation_analysis_error"] = str(orient_error)
+                                        body_result["orientation_analysis_source"] = "bounding_box"
+
+                                # Minimum tool radius calculation with 80% rule
+                                try:
+                                    tool_radius_info = calculate_minimum_tool_radii(
+                                        body, all_recognized_features
+                                    )
+                                    body_result["minimum_tool_radius"] = tool_radius_info
+                                except Exception as radius_error:
+                                    body_result["minimum_tool_radius"] = {
+                                        "error": str(radius_error),
+                                        "global_minimum_radius": None,
+                                        "recommended_tool_radius": None
+                                    }
                             else:
                                 body_result["feature_detection_source"] = "face_analysis"
                                 body_result["recognized_features"] = None
@@ -849,50 +874,53 @@ def handle_analyze_geometry_for_cam(arguments: dict) -> dict:
                         body_result["features_by_priority"] = None
                         body_result["feature_count"] = None
 
-                # Orientation suggestions based on bounding box
-                dims = body_result["bounding_box"]
-                orientations = []
+                # Fallback orientation suggestions based on bounding box
+                # Only used if enhanced orientation analysis wasn't performed
+                if "suggested_orientations" not in body_result:
+                    dims = body_result["bounding_box"]
+                    orientations = []
 
-                # Calculate face areas for stability scoring
-                xy_area = dims["x"] * dims["y"]
-                xz_area = dims["x"] * dims["z"]
-                yz_area = dims["y"] * dims["z"]
-                total_area = xy_area + xz_area + yz_area
+                    # Calculate face areas for stability scoring
+                    xy_area = dims["x"] * dims["y"]
+                    xz_area = dims["x"] * dims["z"]
+                    yz_area = dims["y"] * dims["z"]
+                    total_area = xy_area + xz_area + yz_area
 
-                if total_area > 0:
-                    # Z-up: XY plane as base
-                    z_up_score = xy_area / total_area * 0.8 + 0.2
-                    orientations.append({
-                        "axis": "Z_UP",
-                        "score": round(z_up_score, 2),
-                        "reason": "XY plane as base" + (" (largest face)" if xy_area >= xz_area and xy_area >= yz_area else ""),
-                        "base_dimensions": f"{dims['x']}x{dims['y']}mm",
-                        "height": f"{dims['z']}mm"
-                    })
+                    if total_area > 0:
+                        # Z-up: XY plane as base
+                        z_up_score = xy_area / total_area * 0.8 + 0.2
+                        orientations.append({
+                            "axis": "Z_UP",
+                            "score": round(z_up_score, 2),
+                            "reason": "XY plane as base" + (" (largest face)" if xy_area >= xz_area and xy_area >= yz_area else ""),
+                            "base_dimensions": f"{dims['x']}x{dims['y']}mm",
+                            "height": f"{dims['z']}mm"
+                        })
 
-                    # Y-up: XZ plane as base
-                    y_up_score = xz_area / total_area * 0.8 + 0.1
-                    orientations.append({
-                        "axis": "Y_UP",
-                        "score": round(y_up_score, 2),
-                        "reason": "XZ plane as base" + (" (largest face)" if xz_area > xy_area and xz_area >= yz_area else ""),
-                        "base_dimensions": f"{dims['x']}x{dims['z']}mm",
-                        "height": f"{dims['y']}mm"
-                    })
+                        # Y-up: XZ plane as base
+                        y_up_score = xz_area / total_area * 0.8 + 0.1
+                        orientations.append({
+                            "axis": "Y_UP",
+                            "score": round(y_up_score, 2),
+                            "reason": "XZ plane as base" + (" (largest face)" if xz_area > xy_area and xz_area >= yz_area else ""),
+                            "base_dimensions": f"{dims['x']}x{dims['z']}mm",
+                            "height": f"{dims['y']}mm"
+                        })
 
-                    # X-up: YZ plane as base
-                    x_up_score = yz_area / total_area * 0.8
-                    orientations.append({
-                        "axis": "X_UP",
-                        "score": round(x_up_score, 2),
-                        "reason": "YZ plane as base" + (" (largest face)" if yz_area > xy_area and yz_area > xz_area else ""),
-                        "base_dimensions": f"{dims['y']}x{dims['z']}mm",
-                        "height": f"{dims['x']}mm"
-                    })
+                        # X-up: YZ plane as base
+                        x_up_score = yz_area / total_area * 0.8
+                        orientations.append({
+                            "axis": "X_UP",
+                            "score": round(x_up_score, 2),
+                            "reason": "YZ plane as base" + (" (largest face)" if yz_area > xy_area and yz_area > xz_area else ""),
+                            "base_dimensions": f"{dims['y']}x{dims['z']}mm",
+                            "height": f"{dims['x']}mm"
+                        })
 
-                # Sort by score
-                orientations.sort(key=lambda x: x["score"], reverse=True)
-                body_result["suggested_orientations"] = orientations
+                    # Sort by score
+                    orientations.sort(key=lambda x: x["score"], reverse=True)
+                    body_result["suggested_orientations"] = orientations
+                    body_result["orientation_analysis_source"] = "bounding_box"
 
                 results.append(body_result)
 
