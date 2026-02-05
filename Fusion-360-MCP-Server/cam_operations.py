@@ -39,6 +39,22 @@ try:
 except ImportError:
     FEATURE_DETECTOR_AVAILABLE = False
 
+# Stock suggestions module for stock dimension calculation, cylindrical detection,
+# and preference storage via MCP SQLite bridge
+try:
+    from stock_suggestions import (
+        calculate_stock_dimensions,
+        DEFAULT_OFFSETS,
+        detect_cylindrical_part,
+        get_preference,
+        save_preference,
+        initialize_schema,
+        classify_geometry_type
+    )
+    STOCK_SUGGESTIONS_AVAILABLE = True
+except ImportError:
+    STOCK_SUGGESTIONS_AVAILABLE = False
+
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -942,6 +958,378 @@ def handle_analyze_geometry_for_cam(arguments: dict) -> dict:
 
 
 # =============================================================================
+# suggest_stock_setup - Suggest stock dimensions and orientation
+# =============================================================================
+
+def handle_suggest_stock_setup(arguments: dict) -> dict:
+    """
+    Suggest stock setup based on geometry analysis.
+
+    Main MCP operation that calculates stock dimensions from part geometry,
+    recommends orientation, detects cylindrical parts, and manages user
+    preferences. Implements interactive prompting per CONTEXT.md when
+    preferences don't exist or orientation confidence is low.
+
+    Arguments:
+        body_name (str, optional): Specific body to analyze (default: first body)
+        material (str, optional): Material name for preference lookup
+        use_defaults (bool): If True, skip preference check and use defaults
+        save_as_preference (bool): If True, save current values as new preference
+        custom_offsets (dict): Override offsets with {"xy_mm": X, "z_mm": Y}
+        round_to_standard (bool): Round to standard stock sizes (default: True)
+        selected_orientation (str): User's orientation choice when prompted
+
+    Returns:
+        One of three status responses:
+
+        "success": Full stock suggestion returned
+            {
+                "status": "success",
+                "stock_dimensions": {...},
+                "recommended_shape": "rectangular" | "round",
+                "orientation": {...},
+                "setup_sequence": [...],
+                "offsets_applied": {...},
+                "source": "from: user_preference" | "from: default",
+                ...
+            }
+
+        "preference_needed": User should establish preference first
+            {
+                "status": "preference_needed",
+                "message": "No stored preference for {material} + {geometry_type}...",
+                "suggested_defaults": {...},
+                "how_to_proceed": "..."
+            }
+
+        "orientation_choice_needed": Low confidence, user should select orientation
+            {
+                "status": "orientation_choice_needed",
+                "message": "Multiple valid orientations...",
+                "alternatives": [...],
+                "how_to_proceed": "..."
+            }
+    """
+    try:
+        # Check module availability
+        if not STOCK_SUGGESTIONS_AVAILABLE:
+            return _format_error(
+                "Stock suggestions module not available",
+                "Import failed for stock_suggestions module"
+            )
+
+        if not FUSION_AVAILABLE:
+            return _format_error("Fusion 360 API not available")
+
+        app = _get_app()
+        design = adsk.fusion.Design.cast(app.activeProduct)
+
+        if not design:
+            return _format_error("No active design. Open a design document first.")
+
+        root_comp = design.rootComponent
+
+        # Get body to analyze
+        body_name = arguments.get('body_name')
+        body = None
+
+        if body_name:
+            # Find specific body by name
+            for b in root_comp.bRepBodies:
+                if b.name == body_name:
+                    body = b
+                    break
+            if not body:
+                return _format_error(f"Body '{body_name}' not found in design")
+        else:
+            # Use first body
+            if root_comp.bRepBodies.count > 0:
+                body = root_comp.bRepBodies.item(0)
+            else:
+                return _format_error("No bodies found in design")
+
+        # Detect unit system from design
+        units_mgr = design.unitsManager
+        default_units = units_mgr.defaultLengthUnits
+        unit_system = "imperial" if "in" in default_units.lower() else "metric"
+
+        # Get material from body or arguments
+        material = arguments.get('material')
+        if not material:
+            if body.material:
+                material = body.material.name
+            else:
+                material = "unknown"
+
+        # Parse other arguments
+        use_defaults = arguments.get('use_defaults', False)
+        save_as_pref = arguments.get('save_as_preference', False)
+        custom_offsets = arguments.get('custom_offsets')
+        round_to_standard = arguments.get('round_to_standard', True)
+        selected_orientation = arguments.get('selected_orientation')
+
+        # ---------------------------------------------------------------------
+        # Run geometry analysis to get features and orientations
+        # ---------------------------------------------------------------------
+        analysis_result = handle_analyze_geometry_for_cam({
+            'body_names': [body.name],
+            'analysis_type': 'full'
+        })
+
+        # Extract body result from analysis
+        analysis_data = None
+        try:
+            content = analysis_result.get('content', [])
+            if content and len(content) > 0:
+                analysis_data = json.loads(content[0].get('text', '{}'))
+        except Exception:
+            pass
+
+        if not analysis_data or analysis_data.get('error'):
+            return _format_error(
+                "Geometry analysis failed",
+                str(analysis_data.get('error') if analysis_data else 'Unknown error')
+            )
+
+        body_result = analysis_data.get('results', [{}])[0]
+
+        # Get recognized features for classification
+        recognized_features = body_result.get('recognized_features', {})
+        all_features = []
+        if recognized_features:
+            all_features.extend(recognized_features.get('holes', []))
+            all_features.extend(recognized_features.get('pockets', []))
+            all_features.extend(recognized_features.get('slots', []))
+
+        # Classify geometry type for preference keying
+        geometry_type = classify_geometry_type(all_features)
+
+        # ---------------------------------------------------------------------
+        # Preference check (per CONTEXT.md)
+        # ---------------------------------------------------------------------
+        # Define MCP call function placeholder
+        # In production, this would be passed from the MCP bridge
+        mcp_call_func = arguments.get('_mcp_call_func')
+
+        preference = None
+        if mcp_call_func and not use_defaults:
+            # Initialize schema (safe to call multiple times)
+            initialize_schema(mcp_call_func)
+
+            # Try to get stored preference
+            preference = get_preference(material, geometry_type, mcp_call_func)
+
+            # If no preference exists, prompt user
+            if preference is None:
+                return _format_response({
+                    "status": "preference_needed",
+                    "message": f"No stored preference for '{material}' + '{geometry_type}'. "
+                               "Please establish a preference for this combination, or use use_defaults=true.",
+                    "material": material,
+                    "geometry_type": geometry_type,
+                    "suggested_defaults": {
+                        "offsets_xy_mm": DEFAULT_OFFSETS["xy_mm"],
+                        "offsets_z_mm": DEFAULT_OFFSETS["z_mm"],
+                        "stock_shape": "rectangular"
+                    },
+                    "how_to_proceed": (
+                        "Call suggest_stock_setup with use_defaults=true to proceed with defaults, "
+                        "or with save_as_preference=true to save current values as preference."
+                    )
+                })
+
+        # ---------------------------------------------------------------------
+        # Determine offsets to use
+        # Priority: custom_offsets > preference > DEFAULT_OFFSETS
+        # ---------------------------------------------------------------------
+        if custom_offsets:
+            offsets = {
+                "xy_mm": custom_offsets.get("xy_mm", DEFAULT_OFFSETS["xy_mm"]),
+                "z_mm": custom_offsets.get("z_mm", DEFAULT_OFFSETS["z_mm"])
+            }
+            source = "from: custom_offsets"
+        elif preference:
+            offsets = {
+                "xy_mm": preference.get("offsets_xy_mm", DEFAULT_OFFSETS["xy_mm"]),
+                "z_mm": preference.get("offsets_z_mm", DEFAULT_OFFSETS["z_mm"])
+            }
+            source = preference.get("source", "from: user_preference")
+        else:
+            offsets = DEFAULT_OFFSETS.copy()
+            source = "from: default"
+
+        # ---------------------------------------------------------------------
+        # Calculate stock dimensions
+        # ---------------------------------------------------------------------
+        bbox = body.boundingBox
+        stock_dims = calculate_stock_dimensions(
+            bbox=bbox,
+            offsets=offsets,
+            round_to_standard=round_to_standard,
+            unit_system=unit_system
+        )
+
+        # ---------------------------------------------------------------------
+        # Get orientation analysis
+        # ---------------------------------------------------------------------
+        orientations = body_result.get('suggested_orientations', [])
+
+        if not orientations:
+            orientations = [{
+                "axis": "Z_UP",
+                "score": 0.5,
+                "reasoning": "Default orientation - no analysis available",
+                "setup_sequence": ["Single setup with Z-up orientation"]
+            }]
+
+        best_orientation = orientations[0] if orientations else None
+        best_score = best_orientation.get('score', 0) if best_orientation else 0
+
+        # ---------------------------------------------------------------------
+        # Orientation confidence check (per CONTEXT.md)
+        # If best score < 0.7 and no selection provided, prompt user
+        # ---------------------------------------------------------------------
+        if best_score < 0.7 and not selected_orientation:
+            # Find close alternatives (within 15% of best score)
+            alternatives = []
+            for orient in orientations:
+                score_diff = best_score - orient.get('score', 0)
+                if score_diff < 0.15:  # Within 15%
+                    alternatives.append({
+                        "axis": orient.get("axis"),
+                        "score": orient.get("score"),
+                        "reasoning": orient.get("reasoning"),
+                        "setup_sequence": orient.get("setup_sequence", [])
+                    })
+
+            return _format_response({
+                "status": "orientation_choice_needed",
+                "message": f"Multiple valid orientations with similar scores. "
+                           f"Best score: {best_score:.2f} (below 0.70 threshold).",
+                "best_orientation": alternatives[0] if alternatives else None,
+                "alternatives": alternatives,
+                "how_to_proceed": (
+                    "Call suggest_stock_setup with selected_orientation='X_UP'|'Y_UP'|'Z_UP' "
+                    "to choose an orientation."
+                )
+            })
+
+        # If user selected an orientation, find and use it
+        chosen_orientation = best_orientation
+        if selected_orientation:
+            for orient in orientations:
+                if orient.get("axis", "").upper() == selected_orientation.upper():
+                    chosen_orientation = orient
+                    break
+
+        # Extract orientation details
+        orientation_axis = chosen_orientation.get("axis", "Z_UP") if chosen_orientation else "Z_UP"
+        orientation_score = chosen_orientation.get("score", 0.5) if chosen_orientation else 0.5
+        orientation_reasoning = chosen_orientation.get("reasoning", "") if chosen_orientation else ""
+        setup_sequence = chosen_orientation.get("setup_sequence", []) if chosen_orientation else []
+
+        # Ensure setup_sequence is always present (even for single-setup)
+        if not setup_sequence:
+            setup_sequence = [f"Single setup with {orientation_axis} orientation"]
+
+        # Find close alternatives for response (within 15% of best)
+        close_alternatives = []
+        for orient in orientations[1:]:  # Skip best orientation
+            if best_score > 0:
+                score_diff = best_score - orient.get('score', 0)
+                if score_diff < 0.15:  # Within 15%
+                    close_alternatives.append({
+                        "axis": orient.get("axis"),
+                        "score": orient.get("score"),
+                        "reasoning": orient.get("reasoning")
+                    })
+
+        # ---------------------------------------------------------------------
+        # Detect cylindrical part
+        # ---------------------------------------------------------------------
+        cylindrical = detect_cylindrical_part(body, all_features)
+
+        # Build round stock dimensions if cylindrical
+        round_stock = None
+        if cylindrical.get("is_cylindrical"):
+            # Calculate round stock dimensions with offset
+            enclosing_dia = cylindrical.get("enclosing_diameter_mm", 0)
+            round_dia_with_offset = enclosing_dia + (2 * offsets["xy_mm"])
+
+            # Get the length along the cylinder axis
+            bbox_dims = body_result.get("bounding_box", {})
+            axis = cylindrical.get("cylinder_axis", "Z")
+
+            if axis == "X":
+                length = bbox_dims.get("x", 0)
+            elif axis == "Y":
+                length = bbox_dims.get("y", 0)
+            else:  # Z
+                length = bbox_dims.get("z", 0)
+
+            length_with_offset = length + offsets["z_mm"]
+
+            round_stock = {
+                "diameter": {"value": round(round_dia_with_offset, 1), "unit": "mm"},
+                "length": {"value": round(length_with_offset, 1), "unit": "mm"},
+                "cylinder_axis": axis
+            }
+
+        # ---------------------------------------------------------------------
+        # Save preference if requested
+        # ---------------------------------------------------------------------
+        if save_as_pref and mcp_call_func:
+            save_preference(
+                material=material,
+                geometry_type=geometry_type,
+                preference_dict={
+                    "offsets_xy_mm": offsets["xy_mm"],
+                    "offsets_z_mm": offsets["z_mm"],
+                    "preferred_orientation": orientation_axis,
+                    "stock_shape": "round" if cylindrical.get("is_cylindrical") else "rectangular"
+                },
+                mcp_call_func=mcp_call_func
+            )
+
+        # ---------------------------------------------------------------------
+        # Build success response
+        # ---------------------------------------------------------------------
+        response = {
+            "status": "success",
+            "stock_dimensions": {
+                "rectangular": {
+                    "width": stock_dims["width"],
+                    "depth": stock_dims["depth"],
+                    "height": stock_dims["height"]
+                },
+                "round": round_stock
+            },
+            "recommended_shape": "round" if cylindrical.get("is_cylindrical") else "rectangular",
+            "shape_trade_offs": cylindrical.get("trade_offs"),
+            "orientation": {
+                "recommended": orientation_axis,
+                "score": orientation_score,
+                "reasoning": orientation_reasoning,
+                "alternatives": close_alternatives if close_alternatives else []
+            },
+            "setup_sequence": setup_sequence,
+            "offsets_applied": offsets,
+            "source": source,
+            "material": material,
+            "geometry_type": geometry_type,
+            "unit_system": unit_system,
+            "raw_dimensions": stock_dims.get("raw_dimensions"),
+            "rounded_to_standard": stock_dims.get("rounded_to_standard")
+        }
+
+        return _format_response(response)
+
+    except Exception as e:
+        import traceback
+        return _format_error(f"Failed to suggest stock setup: {str(e)}", traceback.format_exc())
+
+
+# =============================================================================
 # OPERATION ROUTER
 # =============================================================================
 
@@ -955,8 +1343,8 @@ def route_cam_operation(operation: str, arguments: dict) -> dict:
         'get_cam_state': handle_get_cam_state,
         'get_tool_library': handle_get_tool_library,
         'analyze_geometry_for_cam': handle_analyze_geometry_for_cam,
-        # Phase 3+
-        # 'suggest_stock_setup': handle_suggest_stock_setup,
+        'suggest_stock_setup': handle_suggest_stock_setup,
+        # Phase 4+
         # 'suggest_toolpath_strategy': handle_suggest_toolpath_strategy,
         # 'record_user_choice': handle_record_user_choice,
         # 'suggest_post_processor': handle_suggest_post_processor,
