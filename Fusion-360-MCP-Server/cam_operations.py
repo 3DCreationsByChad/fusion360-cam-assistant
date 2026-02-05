@@ -400,163 +400,86 @@ def handle_get_tool_library(arguments: dict) -> dict:
         if isinstance(type_filter, str):
             type_filter = [type_filter]
 
-        # Get tool libraries
-        library_manager = cam.libraryManager
-        tool_libraries = library_manager.toolLibraries
+        # Check for include_system_libraries flag (default: False - only document tools)
+        include_system = arguments.get('include_system_libraries', False)
 
-        # List available libraries
         available_libraries = []
-        for lib_url in tool_libraries.libraryUrls:
-            lib = tool_libraries.libraryAtUrl(lib_url)
-            if lib:
-                available_libraries.append({
-                    "name": lib.name,
-                    "url": lib_url.url if hasattr(lib_url, 'url') else str(lib_url),
-                    "tool_count": lib.count if hasattr(lib, 'count') else None
-                })
-
-        # Collect tools
         tools_data = []
 
-        for lib_url in tool_libraries.libraryUrls:
-            lib = tool_libraries.libraryAtUrl(lib_url)
-            if not lib:
-                continue
+        # PRIORITY 1: Document tool library (tools embedded in current document)
+        # This is where user's working tools typically are
+        try:
+            doc_lib = cam.documentToolLibrary
+            if doc_lib and doc_lib.count > 0:
+                available_libraries.append({
+                    "name": "Document Tools",
+                    "source": "document",
+                    "tool_count": doc_lib.count
+                })
 
-            # Filter by library name if specified
-            if library_name and lib.name != library_name:
-                continue
+                # Collect tools from document library
+                for i in range(doc_lib.count):
+                    if len(tools_data) >= limit:
+                        break
 
-            # Iterate through tools in library
-            for i in range(lib.count):
-                if len(tools_data) >= limit:
-                    break
-
-                try:
-                    tool = lib.item(i)
-
-                    # Get tool properties
-                    tool_type_str = ""
                     try:
-                        tool_type = tool.type
-                        if hasattr(tool_type, 'toString'):
-                            tool_type_str = tool_type.toString()
-                        else:
-                            tool_type_str = str(tool_type)
-                    except:
-                        tool_type_str = "unknown"
+                        tool = doc_lib.item(i)
 
-                    # Diameter in mm for filtering (Fusion uses cm internally)
-                    diameter_cm = tool.diameter if hasattr(tool, 'diameter') else 0
-                    diameter_mm = diameter_cm * 10
+                        # Get tool properties
+                        tool_type_str = ""
+                        try:
+                            tool_type = tool.type
+                            if hasattr(tool_type, 'toString'):
+                                tool_type_str = tool_type.toString()
+                            else:
+                                tool_type_str = str(tool_type)
+                        except:
+                            tool_type_str = "unknown"
 
-                    # Apply filters
-                    if type_filter:
-                        type_match = any(t.lower() in tool_type_str.lower() for t in type_filter)
-                        if not type_match:
-                            continue
+                        # Diameter in mm for filtering
+                        diameter_cm = tool.diameter if hasattr(tool, 'diameter') else 0
+                        diameter_mm = diameter_cm * 10
 
-                    if diameter_range:
-                        if diameter_mm < diameter_range[0] or diameter_mm > diameter_range[1]:
-                            continue
+                        # Apply filters
+                        if type_filter:
+                            type_match = any(t.lower() in tool_type_str.lower() for t in type_filter)
+                            if not type_match:
+                                continue
 
-                    # Build tool info with explicit units per CONTEXT.md decision
-                    tool_info = {
-                        "description": tool.description if hasattr(tool, 'description') else "",
-                        "type": tool_type_str,
-                        "diameter": _to_mm(diameter_cm),
-                        "library": lib.name
-                    }
+                        if diameter_range:
+                            if diameter_mm < diameter_range[0] or diameter_mm > diameter_range[1]:
+                                continue
 
-                    # Add additional properties with explicit units
-                    if hasattr(tool, 'numberOfFlutes'):
-                        tool_info["flutes"] = tool.numberOfFlutes
-
-                    if hasattr(tool, 'fluteLength'):
-                        tool_info["flute_length"] = _to_mm(tool.fluteLength)
-
-                    if hasattr(tool, 'overallLength'):
-                        tool_info["overall_length"] = _to_mm(tool.overallLength)
-
-                    if hasattr(tool, 'shaftDiameter'):
-                        tool_info["shaft_diameter"] = _to_mm(tool.shaftDiameter)
-
-                    if hasattr(tool, 'bodyLength'):
-                        tool_info["body_length"] = _to_mm(tool.bodyLength)
-
-                    if hasattr(tool, 'cornerRadius'):
-                        tool_info["corner_radius"] = _to_mm(tool.cornerRadius)
-
-                    if hasattr(tool, 'taperAngle'):
-                        tool_info["taper_angle"] = {
-                            "value": round(tool.taperAngle, 2),
-                            "unit": "deg"
+                        # Build tool info with explicit units
+                        tool_info = {
+                            "description": tool.description if hasattr(tool, 'description') else "",
+                            "type": tool_type_str,
+                            "diameter": _to_mm(diameter_cm),
+                            "library": "Document Tools"
                         }
 
-                    if hasattr(tool, 'productId'):
-                        tool_info["product_id"] = tool.productId
+                        # Add additional properties
+                        if hasattr(tool, 'numberOfFlutes'):
+                            tool_info["flutes"] = tool.numberOfFlutes
+                        if hasattr(tool, 'fluteLength'):
+                            tool_info["flute_length"] = _to_mm(tool.fluteLength)
+                        if hasattr(tool, 'overallLength'):
+                            tool_info["overall_length"] = _to_mm(tool.overallLength)
+                        if hasattr(tool, 'shaftDiameter'):
+                            tool_info["shaft_diameter"] = _to_mm(tool.shaftDiameter)
+                        if hasattr(tool, 'vendor'):
+                            tool_info["vendor"] = tool.vendor
 
-                    if hasattr(tool, 'vendor'):
-                        tool_info["vendor"] = tool.vendor
+                        tools_data.append(tool_info)
 
-                    # Tool material (carbide, HSS, etc.)
-                    if hasattr(tool, 'material'):
-                        try:
-                            tool_info["tool_material"] = str(tool.material)
-                        except:
-                            pass
-
-                    # Additional tool properties per CONTEXT.md
-                    # Helix angle (if available)
-                    try:
-                        if hasattr(tool, 'helixAngle'):
-                            helix = tool.helixAngle
-                            if helix is not None:
-                                tool_info["helix_angle"] = {
-                                    "value": round(helix, 2),
-                                    "unit": "deg"
-                                }
                     except:
-                        pass
+                        continue
+        except Exception as doc_err:
+            pass  # Document library may not exist
 
-                    # Coating (if available)
-                    try:
-                        if hasattr(tool, 'coating'):
-                            coating = tool.coating
-                            if coating:
-                                tool_info["coating"] = str(coating)
-                    except:
-                        pass
-
-                    # Coolant support (if available)
-                    try:
-                        if hasattr(tool, 'coolantSupport'):
-                            coolant = tool.coolantSupport
-                            if coolant is not None:
-                                tool_info["coolant_support"] = str(coolant)
-                    except:
-                        pass
-
-                    # Tip angle for drills (if available)
-                    try:
-                        if hasattr(tool, 'tipAngle'):
-                            tip_angle = tool.tipAngle
-                            if tip_angle is not None:
-                                tool_info["tip_angle"] = {
-                                    "value": round(tip_angle, 2),
-                                    "unit": "deg"
-                                }
-                    except:
-                        pass
-
-                    tools_data.append(tool_info)
-
-                except Exception as tool_error:
-                    # Skip tools that can't be read
-                    continue
-
-            if len(tools_data) >= limit:
-                break
+        # PRIORITY 2: System libraries (only if requested and we need more tools)
+        # Note: System library support can be added later if needed
+        # For now, document tools are the primary source
 
         result = {
             "tools": tools_data,
