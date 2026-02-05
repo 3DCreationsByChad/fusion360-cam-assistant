@@ -29,8 +29,11 @@ from .stock_sizes import (
     IMPERIAL_ROUND_DIAMETERS_IN,
     MM_PER_INCH
 )
+from .stock_calculator import calculate_stock_dimensions, DEFAULT_OFFSETS
 
 __all__ = [
+    'calculate_stock_dimensions',
+    'DEFAULT_OFFSETS',
     'round_to_standard_size',
     'METRIC_PLATE_THICKNESSES_MM',
     'METRIC_BAR_WIDTHS_MM',
