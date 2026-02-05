@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Fusion 360 specific
+*.f3d
+*.f3z
+*.step
+*.stp
+*.iges
+*.igs
+
+# Logs
+*.log
+logs/
+
+# Local configuration
+config.local.py
+.env
+.env.local
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Build artifacts
+*.zip
+fusion360_mcp_update.zip
+
+# User data (don't commit personal preferences)
+user_data/
+
+# Tool libraries (large files, download separately)
+# Uncomment if you want to exclude:
+# tool_libraries/
+
+# Planning docs that might contain sensitive info
+# .planning/  # Keep this for transparency
+
+# Test outputs
+test_output/
+*.test.json
