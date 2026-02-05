@@ -17,35 +17,20 @@
 
 ## Phase 1: Foundation — CAM State Access
 
-**Goal:** Establish basic CAM API access and state querying.
+**Goal:** Establish basic CAM API access and state querying with explicit units in all responses.
 
-### Tasks
+**Status:** IN PROGRESS
 
-1. **Create `cam_operations.py` module**
-   - New file for CAM-specific handlers
-   - Import into `mcp_integration.py`
-   - Keep main file clean
+**Plans:** 1 plan
 
-2. **Implement `get_cam_state` operation**
-   - Check if CAM workspace exists
-   - List all setups with stock info
-   - List operations per setup
-   - Return machine/post-processor info
-
-3. **Implement `get_tool_library` operation**
-   - Query Fusion's tool library
-   - Filter by type, diameter, material
-   - Return tool specifications
-
-4. **Test with Fusion 360**
-   - Load add-in manually
-   - Verify operations work via MCP
-   - Document any API quirks
+Plans:
+- [ ] 01-01-PLAN.md — Enhance CAM operations with explicit units and full tool properties
 
 ### Deliverables
-- `cam_operations.py` with `get_cam_state`, `get_tool_library`
-- Updated `mcp_integration.py` routing
-- Test results documented
+- `cam_operations.py` with `get_cam_state`, `get_tool_library` using explicit unit format
+- WCS information per setup
+- Full tool property definitions
+- Human-verified in Fusion 360
 
 ---
 
@@ -241,4 +226,4 @@
 
 ---
 
-*Last updated: 2026-02-04*
+*Last updated: 2026-02-05*
