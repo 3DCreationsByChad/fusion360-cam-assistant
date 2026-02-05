@@ -61,6 +61,133 @@ def _to_mm(cm_value: float) -> Optional[dict]:
     }
 
 
+def _extract_stock_info(setup):
+    """
+    Extract stock information from a CAM setup via parameters.
+
+    The CAM API doesn't expose stock via direct properties like StockModes.
+    Instead, stock configuration is accessed through setup.parameters.
+    """
+    stock_info = {}
+
+    try:
+        params = setup.parameters
+
+        # Helper to safely get parameter expression
+        def get_param(name, default=None):
+            try:
+                p = params.itemByName(name)
+                if p:
+                    return p.expression
+            except:
+                pass
+            return default
+
+        def get_param_float(name, default=0.0):
+            try:
+                p = params.itemByName(name)
+                if p:
+                    # Try to get numeric value from expression
+                    expr = p.expression
+                    try:
+                        return float(expr.replace('mm', '').replace('in', '').replace(' ', ''))
+                    except:
+                        return expr  # Return expression string if can't parse
+            except:
+                pass
+            return default
+
+        # Stock mode
+        stock_info['mode'] = get_param('job_stockMode', 'unknown')
+
+        # Stock bounding box (computed values in mm)
+        stock_info['bounds'] = {
+            'x_low': {"value": get_param_float('stockXLow'), "unit": "mm"},
+            'x_high': {"value": get_param_float('stockXHigh'), "unit": "mm"},
+            'y_low': {"value": get_param_float('stockYLow'), "unit": "mm"},
+            'y_high': {"value": get_param_float('stockYHigh'), "unit": "mm"},
+            'z_low': {"value": get_param_float('stockZLow'), "unit": "mm"},
+            'z_high': {"value": get_param_float('stockZHigh'), "unit": "mm"},
+        }
+
+        # Calculate dimensions from bounds
+        bounds = stock_info['bounds']
+        try:
+            x_low = bounds['x_low']['value'] if isinstance(bounds['x_low']['value'], (int, float)) else 0
+            x_high = bounds['x_high']['value'] if isinstance(bounds['x_high']['value'], (int, float)) else 0
+            y_low = bounds['y_low']['value'] if isinstance(bounds['y_low']['value'], (int, float)) else 0
+            y_high = bounds['y_high']['value'] if isinstance(bounds['y_high']['value'], (int, float)) else 0
+            z_low = bounds['z_low']['value'] if isinstance(bounds['z_low']['value'], (int, float)) else 0
+            z_high = bounds['z_high']['value'] if isinstance(bounds['z_high']['value'], (int, float)) else 0
+
+            stock_info['dimensions'] = {
+                'width': {"value": round(x_high - x_low, 3), "unit": "mm"},
+                'depth': {"value": round(y_high - y_low, 3), "unit": "mm"},
+                'height': {"value": round(z_high - z_low, 3), "unit": "mm"}
+            }
+        except:
+            pass
+
+        # Stock offsets (for relative/default mode)
+        stock_info['offsets'] = {
+            'sides': get_param('job_stockOffsetSides'),
+            'top': get_param('job_stockOffsetTop'),
+            'bottom': get_param('job_stockOffsetBottom'),
+        }
+
+        # Fixed stock dimensions (for fixed size box mode)
+        stock_info['fixed_size'] = {
+            'x': get_param('job_stockFixedX'),
+            'y': get_param('job_stockFixedY'),
+            'z': get_param('job_stockFixedZ'),
+        }
+
+        # Model bounding box (the actual part geometry)
+        stock_info['model_bounds'] = {
+            'x_low': {"value": get_param_float('surfaceXLow'), "unit": "mm"},
+            'x_high': {"value": get_param_float('surfaceXHigh'), "unit": "mm"},
+            'y_low': {"value": get_param_float('surfaceYLow'), "unit": "mm"},
+            'y_high': {"value": get_param_float('surfaceYHigh'), "unit": "mm"},
+            'z_low': {"value": get_param_float('surfaceZLow'), "unit": "mm"},
+            'z_high': {"value": get_param_float('surfaceZHigh'), "unit": "mm"},
+        }
+
+        # Calculate model dimensions
+        model_bounds = stock_info['model_bounds']
+        try:
+            x_low = model_bounds['x_low']['value'] if isinstance(model_bounds['x_low']['value'], (int, float)) else 0
+            x_high = model_bounds['x_high']['value'] if isinstance(model_bounds['x_high']['value'], (int, float)) else 0
+            y_low = model_bounds['y_low']['value'] if isinstance(model_bounds['y_low']['value'], (int, float)) else 0
+            y_high = model_bounds['y_high']['value'] if isinstance(model_bounds['y_high']['value'], (int, float)) else 0
+            z_low = model_bounds['z_low']['value'] if isinstance(model_bounds['z_low']['value'], (int, float)) else 0
+            z_high = model_bounds['z_high']['value'] if isinstance(model_bounds['z_high']['value'], (int, float)) else 0
+
+            stock_info['model_dimensions'] = {
+                'width': {"value": round(x_high - x_low, 3), "unit": "mm"},
+                'depth': {"value": round(y_high - y_low, 3), "unit": "mm"},
+                'height': {"value": round(z_high - z_low, 3), "unit": "mm"}
+            }
+        except:
+            pass
+
+        # Cylindrical stock (for turning or rotary)
+        stock_info['cylindrical'] = {
+            'diameter': get_param('job_stockDiameter'),
+            'inner_diameter': get_param('job_stockDiameterInner'),
+            'length': get_param('job_stockLength'),
+        }
+
+        # Additional useful params
+        stock_info['job_type'] = get_param('job_type')
+        stock_info['wcs_origin_mode'] = get_param('wcs_origin_mode')
+        stock_info['wcs_origin_box_point'] = get_param('wcs_origin_boxPoint')
+
+    except Exception as e:
+        stock_info['error'] = str(e)
+
+    return stock_info
+
+
 def _get_cam_product():
     """Get CAM product from active document, if available."""
     app = _get_app()
@@ -144,102 +271,8 @@ def handle_get_cam_state(arguments: dict) -> dict:
                 "wcs_origin": None
             }
 
-            # Get stock configuration
-            try:
-                stock_mode = setup.stockMode
-
-                if stock_mode == adsk.cam.StockModes.FixedBoxStock:
-                    setup_info["stock"] = {
-                        "type": "fixed_box",
-                        "mode": "FixedBoxStock"
-                    }
-                    # Get dimensions with explicit units
-                    try:
-                        params = setup.parameters
-                        x_param = params.itemByName("job_stockFixedX")
-                        y_param = params.itemByName("job_stockFixedY")
-                        z_param = params.itemByName("job_stockFixedZ")
-
-                        setup_info["stock"]["dimensions"] = {
-                            "x": {
-                                "expression": x_param.expression if x_param else None,
-                                "value": _to_mm(x_param.value.value) if x_param and x_param.value else None
-                            },
-                            "y": {
-                                "expression": y_param.expression if y_param else None,
-                                "value": _to_mm(y_param.value.value) if y_param and y_param.value else None
-                            },
-                            "z": {
-                                "expression": z_param.expression if z_param else None,
-                                "value": _to_mm(z_param.value.value) if z_param and z_param.value else None
-                            }
-                        }
-                    except:
-                        pass
-
-                elif stock_mode == adsk.cam.StockModes.RelativeBoxStock:
-                    setup_info["stock"] = {
-                        "type": "relative_box",
-                        "mode": "RelativeBoxStock"
-                    }
-                    # Get offsets with explicit units
-                    try:
-                        params = setup.parameters
-                        side_param = params.itemByName("job_stockOffsetSides")
-                        top_param = params.itemByName("job_stockOffsetTop")
-                        bottom_param = params.itemByName("job_stockOffsetBottom")
-
-                        setup_info["stock"]["offsets"] = {
-                            "side": {
-                                "expression": side_param.expression if side_param else None,
-                                "value": _to_mm(side_param.value.value) if side_param and side_param.value else None
-                            },
-                            "top": {
-                                "expression": top_param.expression if top_param else None,
-                                "value": _to_mm(top_param.value.value) if top_param and top_param.value else None
-                            },
-                            "bottom": {
-                                "expression": bottom_param.expression if bottom_param else None,
-                                "value": _to_mm(bottom_param.value.value) if bottom_param and bottom_param.value else None
-                            }
-                        }
-                    except:
-                        pass
-
-                elif stock_mode == adsk.cam.StockModes.FromSolidStock:
-                    setup_info["stock"] = {
-                        "type": "from_solid",
-                        "mode": "FromSolidStock"
-                    }
-
-                elif stock_mode == adsk.cam.StockModes.CylinderStock:
-                    setup_info["stock"] = {
-                        "type": "cylinder",
-                        "mode": "CylinderStock"
-                    }
-                    # Try to get cylinder dimensions
-                    try:
-                        params = setup.parameters
-                        diameter_param = params.itemByName("job_stockCylinderDiameter")
-                        height_param = params.itemByName("job_stockCylinderHeight")
-
-                        if diameter_param or height_param:
-                            setup_info["stock"]["dimensions"] = {}
-                            if diameter_param:
-                                setup_info["stock"]["dimensions"]["diameter"] = {
-                                    "expression": diameter_param.expression,
-                                    "value": _to_mm(diameter_param.value.value) if diameter_param.value else None
-                                }
-                            if height_param:
-                                setup_info["stock"]["dimensions"]["height"] = {
-                                    "expression": height_param.expression,
-                                    "value": _to_mm(height_param.value.value) if height_param.value else None
-                                }
-                    except:
-                        pass
-
-            except Exception as e:
-                setup_info["stock"] = {"error": str(e)}
+            # Get stock configuration via parameters (StockModes enum doesn't exist)
+            setup_info["stock"] = _extract_stock_info(setup)
 
             # Get WCS (Work Coordinate System) info per CONTEXT.md decision
             try:
