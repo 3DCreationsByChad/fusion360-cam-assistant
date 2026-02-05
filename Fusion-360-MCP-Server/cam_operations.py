@@ -425,31 +425,19 @@ def handle_get_tool_library(arguments: dict) -> dict:
                     try:
                         tool = doc_lib.item(i)
 
-                        # Get tool properties - Document tools are JSON/dict-like objects
-                        tool_type_str = ""
+                        # Parse tool JSON to get structured data
+                        tool_data = {}
                         try:
-                            # Dictionary access for document tool library format
-                            if hasattr(tool, 'get') or isinstance(tool, dict):
-                                tool_type_str = tool.get("type", "") if hasattr(tool, 'get') else tool["type"]
-                            elif hasattr(tool, 'type'):
-                                tool_type = tool.type
-                                if hasattr(tool_type, 'toString'):
-                                    tool_type_str = tool_type.toString()
-                                else:
-                                    tool_type_str = str(tool_type)
+                            import json
+                            tool_json = tool.toJson()
+                            tool_data = json.loads(tool_json)
                         except:
-                            tool_type_str = "unknown"
+                            pass
 
-                        # Diameter - geometry.DC is in mm for document tools
-                        diameter_mm = 0
-                        try:
-                            if hasattr(tool, 'get') or isinstance(tool, dict):
-                                geometry = tool.get("geometry", {}) if hasattr(tool, 'get') else tool.get("geometry", {})
-                                diameter_mm = geometry.get("DC", 0) if geometry else 0
-                            elif hasattr(tool, 'diameter'):
-                                diameter_mm = tool.diameter * 10  # API uses cm
-                        except:
-                            diameter_mm = 0
+                        # Extract properties from parsed JSON
+                        tool_type_str = tool_data.get("type", "")
+                        geometry = tool_data.get("geometry", {})
+                        diameter_mm = geometry.get("DC", 0) if geometry else 0
 
                         # Apply filters
                         if type_filter:
@@ -462,60 +450,28 @@ def handle_get_tool_library(arguments: dict) -> dict:
                                 continue
 
                         # Build tool info with explicit units
-                        # Get description - dict access for document tools
-                        description = ""
-                        try:
-                            if hasattr(tool, 'get') or isinstance(tool, dict):
-                                description = tool.get("description", "") if hasattr(tool, 'get') else tool.get("description", "")
-                            elif hasattr(tool, 'description'):
-                                description = tool.description
-                        except:
-                            description = ""
-
                         tool_info = {
-                            "description": description,
+                            "description": tool.description if hasattr(tool, 'description') else tool_data.get("description", ""),
                             "type": tool_type_str,
                             "diameter": {"value": round(diameter_mm, 3), "unit": "mm"},
                             "library": "Document Tools"
                         }
 
-                        # Add additional properties from geometry dict
-                        try:
-                            if hasattr(tool, 'get') or isinstance(tool, dict):
-                                geometry = tool.get("geometry", {}) if hasattr(tool, 'get') else tool.get("geometry", {})
-                                if geometry:
-                                    # LF = flute length, OAL = overall length, SFDM = shaft diameter
-                                    if "LF" in geometry:
-                                        tool_info["flute_length"] = {"value": round(geometry["LF"], 3), "unit": "mm"}
-                                    if "OAL" in geometry:
-                                        tool_info["overall_length"] = {"value": round(geometry["OAL"], 3), "unit": "mm"}
-                                    if "SFDM" in geometry:
-                                        tool_info["shaft_diameter"] = {"value": round(geometry["SFDM"], 3), "unit": "mm"}
-                                    if "NOF" in geometry:
-                                        tool_info["flutes"] = geometry["NOF"]
-                            else:
-                                # Fallback to API object properties
-                                if hasattr(tool, 'numberOfFlutes'):
-                                    tool_info["flutes"] = tool.numberOfFlutes
-                                if hasattr(tool, 'fluteLength'):
-                                    tool_info["flute_length"] = _to_mm(tool.fluteLength)
-                                if hasattr(tool, 'overallLength'):
-                                    tool_info["overall_length"] = _to_mm(tool.overallLength)
-                                if hasattr(tool, 'shaftDiameter'):
-                                    tool_info["shaft_diameter"] = _to_mm(tool.shaftDiameter)
-                        except:
-                            pass
+                        # Add geometry properties (all in mm)
+                        if geometry:
+                            if "LF" in geometry:
+                                tool_info["flute_length"] = {"value": round(geometry["LF"], 3), "unit": "mm"}
+                            if "OAL" in geometry:
+                                tool_info["overall_length"] = {"value": round(geometry["OAL"], 3), "unit": "mm"}
+                            if "SFDM" in geometry:
+                                tool_info["shaft_diameter"] = {"value": round(geometry["SFDM"], 3), "unit": "mm"}
+                            if "NOF" in geometry:
+                                tool_info["flutes"] = geometry["NOF"]
 
                         # Vendor info
-                        try:
-                            if hasattr(tool, 'get') or isinstance(tool, dict):
-                                vendor = tool.get("vendor", "") if hasattr(tool, 'get') else tool.get("vendor", "")
-                                if vendor:
-                                    tool_info["vendor"] = vendor
-                            elif hasattr(tool, 'vendor'):
-                                tool_info["vendor"] = tool.vendor
-                        except:
-                            pass
+                        vendor = tool_data.get("vendor", "")
+                        if vendor:
+                            tool_info["vendor"] = vendor
 
                         tools_data.append(tool_info)
 
