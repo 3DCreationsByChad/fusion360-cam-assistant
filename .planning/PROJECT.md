@@ -1,5 +1,7 @@
 # Fusion 360 AI CAM Assistant
 
+**GitHub:** https://github.com/3DCreationsByChad/fusion360-cam-assistant
+
 ## What This Is
 
 An AI-powered CAM workflow assistant for Fusion 360 that analyzes geometry, suggests optimal stock setup, toolpath strategies, and post-processing settings. Built as an extension to the [Fusion-360-MCP-Server](https://github.com/AuraFriday/Fusion-360-MCP-Server), it learns from your preferences and improves suggestions over time.

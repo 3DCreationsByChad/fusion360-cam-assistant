@@ -1,5 +1,7 @@
 # Fusion 360 AI CAM Assistant — Roadmap
 
+**GitHub:** https://github.com/3DCreationsByChad/fusion360-cam-assistant
+
 ## Milestone 1: CAM Extension MVP
 
 **Goal:** Extend Fusion-360-MCP-Server with core CAM operations that analyze geometry and provide basic suggestions.
