@@ -7,33 +7,34 @@
 ## Current Position
 
 Phase: 3 of 5 (Stock Suggestions)
-Plan: 01 of 03 in phase
+Plan: 02 of 03 in phase
 Status: In progress
-Last activity: 2026-02-05 - Completed 03-01-PLAN.md
+Last activity: 2026-02-05 - Completed 03-02-PLAN.md
 
-Progress: [#####-----] 50% (5/10 plans estimated)
+Progress: [######----] 60% (6/10 plans estimated)
 
 ### Phase 3 Progress
 
 | Plan | Name | Status |
 |------|------|--------|
 | 03-01 | Stock calculation foundation | Complete |
-| 03-02 | Stock type detection | Pending |
+| 03-02 | Cylindrical detection and preference store | Complete |
 | 03-03 | MCP tool integration | Pending |
 
-### What Was Delivered (Phase 3 Plan 01)
+### What Was Delivered (Phase 3 Plan 02)
 
-1. **stock_sizes.py** with metric and imperial standard size tables
-2. **stock_calculator.py** with calculate_stock_dimensions function
-3. **round_to_standard_size** function for next-larger-size rounding
-4. **DEFAULT_OFFSETS** constant (5mm XY, 2.5mm Z per CONTEXT.md)
-5. Explicit unit format `{"value": X, "unit": "mm"}` for all dimensions
+1. **cylindrical_detector.py** with detect_cylindrical_part function (348 lines)
+2. **preference_store.py** with SQLite schema and preference operations (266 lines)
+3. **initialize_schema** creates cam_stock_preferences and cam_machine_profiles tables
+4. **get_preference/save_preference** for material + geometry_type keyed storage
+5. **classify_geometry_type** categorizes by dominant feature type
+6. **Trade-offs dict** for cylindrical parts (rectangular vs round stock options)
 
 ### Key Files Created
 
-- `Fusion-360-MCP-Server/stock_suggestions/__init__.py` - Module exports (45 lines)
-- `Fusion-360-MCP-Server/stock_suggestions/stock_sizes.py` - Size tables and rounding (134 lines)
-- `Fusion-360-MCP-Server/stock_suggestions/stock_calculator.py` - Dimension calculation (126 lines)
+- `Fusion-360-MCP-Server/stock_suggestions/cylindrical_detector.py` - Lathe candidate detection (348 lines)
+- `Fusion-360-MCP-Server/stock_suggestions/preference_store.py` - SQLite preference storage (266 lines)
+- `Fusion-360-MCP-Server/stock_suggestions/__init__.py` - Updated module exports
 
 ## Accumulated Decisions
 
@@ -54,6 +55,10 @@ Progress: [#####-----] 50% (5/10 plans estimated)
 | 02-03 | 80% rule for tool radius | Industry standard for internal corners |
 | 03-01 | XY offset applied to all 4 sides (2x per axis) | Standard practice for facing material |
 | 03-01 | Z offset applied to top only (1x) | Bottom typically fixture reference surface |
+| 03-02 | Combined scoring: 60% face + 40% bbox shape | Balance direct geometry with bounding box analysis |
+| 03-02 | 20% tolerance for cross-section similarity | Dimensions within 20% considered "similar" |
+| 03-02 | 70% threshold for dominant feature type | classify_geometry_type categorization threshold |
+| 03-02 | Lowercase normalization for preference keys | Consistent keying for material + geometry_type |
 
 ## Lessons Learned
 
@@ -74,17 +79,18 @@ Progress: [#####-----] 50% (5/10 plans estimated)
 
 ### Phase 3
 1. **Fusion API coordinates in cm** - Multiply by 10 to convert to mm
+2. **MCP bridge SQLite calls** - Use tool_unlock_token "29e63eb5" for sqlite tool
+3. **Source attribution pattern** - Include "source" key in preference returns for traceability
 
 ## Session Continuity
 
-Last session: 2026-02-05T22:48:00Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-02-05T22:49:14Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
 
 ## Next Steps
 
 Continue Phase 3:
-- **03-02**: Stock type detection (cylindrical parts, workholding suggestions)
 - **03-03**: MCP tool integration (suggest_stock_setup tool)
 
 Command: `/gsd:execute-phase 3`
