@@ -83,31 +83,21 @@ Plans:
 
 ## Phase 4: Toolpath Strategy Suggestions
 
-**Goal:** Recommend toolpath strategies based on geometry and material.
+**Goal:** Recommend toolpath strategies based on geometry and material with per-feature operation mapping, tool selection, and feeds/speeds calculation.
 
-### Tasks
+**Plans:** 2 plans
 
-1. **Implement `suggest_toolpath_strategy` operation**
-   - Analyze features to determine required operations
-   - Suggest roughing strategy (adaptive vs pocket)
-   - Suggest finishing strategy
-   - Recommend tools from library
-   - Calculate basic feeds/speeds
-
-2. **Strategy rules engine**
-   - Map feature types to operation types
-   - Material-based parameter adjustments
-   - Tool selection logic (largest that fits)
-
-3. **Create `cam_strategy_preferences` table**
-   - Store preferred operations per feature type
-   - Store preferred tool selections
-   - Track confidence scores
+Plans:
+- [ ] 04-01-PLAN.md — Toolpath strategy rules engine (material library, feeds/speeds, tool selector, operation mapper)
+- [ ] 04-02-PLAN.md — Strategy preferences, MCP handler integration, and Fusion 360 verification
 
 ### Deliverables
-- `suggest_toolpath_strategy` handler
-- Rules engine for common scenarios
-- Strategy preferences table
+- `toolpath_strategy/` module with rules engine (material_library, feeds_speeds, tool_selector, operation_mapper)
+- `suggest_toolpath_strategy` MCP handler with per-feature recommendations
+- `cam_strategy_preferences` SQLite table for strategy preferences
+- Tool selection with 80% corner radius rule and flute length constraints
+- Feeds/speeds from standard SFM formulas with carbide/HSS support
+- Human-verified in Fusion 360
 
 ---
 
