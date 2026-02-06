@@ -1497,11 +1497,63 @@ def handle_suggest_toolpath_strategy(arguments: dict) -> dict:
 
         # If no features detected
         if not features_by_priority:
+            # Build helpful diagnostic info about what WAS found
+            face_summary = body_result.get("feature_summary", {})
+            face_features = body_result.get("face_features", [])
+
+            # Count geometry types found
+            cylindrical_count = face_summary.get("cylindrical_faces", 0)
+            planar_count = face_summary.get("planar_faces", 0)
+
+            # Identify what kinds of non-recognized geometry exists
+            geometry_found = []
+            if cylindrical_count > 0:
+                geometry_found.append(f"{cylindrical_count} cylindrical faces")
+            if planar_count > 0:
+                geometry_found.append(f"{planar_count} planar faces")
+
+            # Check for complex surfaces (NURBS, splines, etc.)
+            has_complex_surfaces = any(
+                f.get("type") in ["spherical", "conical", "toroidal"]
+                for f in face_features
+            )
+            if has_complex_surfaces:
+                geometry_found.append("complex surfaces (fillets, rounds, or sculpted geometry)")
+
+            geometry_description = ", ".join(geometry_found) if geometry_found else "various geometry"
+
             return _format_response({
                 "status": "no_features",
-                "message": "No machinable features detected in the part. Detected features must include holes, pockets, or slots.",
+                "message": (
+                    f"No automatically recognizable features detected in '{body.name}'. "
+                    f"Found {geometry_description}, but no simple holes, pockets, or slots that Fusion's feature recognition can identify."
+                ),
                 "body_name": body.name,
-                "material": material
+                "material": material,
+                "limitations": {
+                    "detected_types": [
+                        "Simple holes (drilled, counterbored, countersunk)",
+                        "Rectangular pockets",
+                        "Slots"
+                    ],
+                    "not_detected": [
+                        "Threaded holes (use Thread operation manually)",
+                        "Complex surface geometry (NURBS, splines, sculpted surfaces)",
+                        "Chamfers, fillets, and radii (considered finish features)",
+                        "Holes in patterns that weren't modeled with Hole feature",
+                        "Non-standard pocket shapes or blind cavities"
+                    ]
+                },
+                "geometry_found": {
+                    "cylindrical_faces": cylindrical_count,
+                    "planar_faces": planar_count,
+                    "has_complex_surfaces": has_complex_surfaces
+                },
+                "next_steps": (
+                    "For this part, you'll need to create CAM operations manually in Fusion 360. "
+                    "Typical strategy: (1) Adaptive Clearing for roughing, (2) Contour for walls/profiles, "
+                    "(3) Scallop or Parallel for complex surfaces, (4) Thread Milling for threaded holes."
+                )
             })
 
         # ---------------------------------------------------------------------

@@ -164,9 +164,14 @@ Task 2 checkpoint states approved manually in Fusion 360 with verification that:
 **Truth 9: Three-status pattern**
 - Evidence: Handler return statements
   - success: line 1693, includes suggestions array with all features
-  - no_features: line 1500, when features_by_priority is empty
+  - no_features: line 1525, when features_by_priority is empty
   - no_tool_available: line 1584, per-feature status when tool selection fails
   - Per-feature granularity allows partial success (some features get tools, others do not)
+- Enhanced error messaging: no_features response now includes:
+  - Diagnostic geometry_found data (cylindrical_faces, planar_faces, has_complex_surfaces counts)
+  - limitations object documenting detected_types vs not_detected (threaded holes, NURBS surfaces, etc.)
+  - Actionable next_steps with typical CAM strategy suggestions
+  - Descriptive message explaining what WAS found vs what can't be recognized
 
 **Truth 10: Tool description documents operation**
 - Evidence: mcp_integration.py lines 351-363

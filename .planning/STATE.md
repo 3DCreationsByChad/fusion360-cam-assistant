@@ -106,6 +106,7 @@ Progress: [##########] 100% (10/10 plans estimated)
 3. **Graceful tool selection failures** - Continue processing other features when no tool fits
 4. **AI client caching of tool_description** - Restart both add-in and client after documentation updates
 5. **Priority-based feature processing** - Ensures correct machining workflow (drill, rough, finish)
+6. **Informative error responses** - Include diagnostic data (geometry_found), limitations documentation, and actionable next_steps rather than just "failed"
 
 ## Session Continuity
 

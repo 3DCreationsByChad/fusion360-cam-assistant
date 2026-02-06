@@ -110,6 +110,19 @@ None - plan executed exactly as written.
 - Lesson: MCP tool_description is cached by AI clients — restart both add-in and client after documentation updates
 - Note: Code was correct in repo, issue was deployment/cache timing
 
+## Post-Release Improvements
+
+**Enhanced "no_features" error message (2026-02-05):**
+- Issue: Original error message "No machinable features detected" was not informative enough
+- User tested with part containing threaded holes, NURBS surfaces, and fillets — received "no_features" as expected
+- Improvement: Enhanced response now includes:
+  - Diagnostic information about what geometry WAS found (cylindrical faces, planar faces, complex surfaces)
+  - Clear documentation of detected_types vs not_detected limitations
+  - Actionable next_steps with typical CAM strategy suggestions
+  - Example: "Found 24 cylindrical faces, 12 planar faces, complex surfaces, but no simple holes, pockets, or slots..."
+- Location: cam_operations.py lines 1498-1557
+- Benefit: Users understand why their part wasn't analyzed and what to do instead
+
 ## User Setup Required
 
 None - no external service configuration required.

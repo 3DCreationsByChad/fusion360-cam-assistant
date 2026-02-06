@@ -359,8 +359,9 @@ All arguments are optional. Returns one of three response types:
 }
 All arguments are optional. Returns per-feature operation recommendations:
 - "success": Suggestions with roughing/finishing operations, tool selection, and feeds/speeds per feature
-- "no_features": No machinable features detected in the part
+- "no_features": No machinable features detected — includes diagnostic info (geometry_found, limitations, next_steps)
 Each suggestion includes recommended_tool, cutting_parameters (RPM, feed rate, stepover, stepdown), and confidence scores.
+The no_features response explains what geometry was found vs what can be detected (simple holes, pockets, slots only).
 
 ### record_user_choice - Store Feedback for Learning (coming soon)
 ### suggest_post_processor - Match Machine to Post (coming soon)
