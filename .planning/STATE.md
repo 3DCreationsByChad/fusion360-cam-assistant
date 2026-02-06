@@ -1,17 +1,17 @@
 # Project State
 
-**Last Updated:** 2026-02-05
-**Phase:** 4 - Toolpath Strategy Suggestions
-**Status:** Phase Complete
+**Last Updated:** 2026-02-06
+**Phase:** 5 - Learning System
+**Status:** In Progress
 
 ## Current Position
 
-Phase: 4 of 5 (Toolpath Strategy Suggestions)
-Plan: 02 of 02 in phase
-Status: Phase complete
-Last activity: 2026-02-05 - Completed 04-02-PLAN.md (strategy preferences and MCP handler)
+Phase: 5 of 5 (Learning System)
+Plan: 01 of 02 in phase
+Status: Plan 01 complete
+Last activity: 2026-02-06 - Completed 05-01-PLAN.md (feedback learning foundation)
 
-Progress: [##########] 100% (10/10 plans estimated)
+Progress: [###########] 92% (11/12 plans estimated)
 
 ### Phase 4 Progress
 
@@ -19,6 +19,13 @@ Progress: [##########] 100% (10/10 plans estimated)
 |------|------|--------|
 | 04-01 | Toolpath strategy rules engine | Complete |
 | 04-02 | Strategy preferences and MCP handler | Complete |
+
+### Phase 5 Progress
+
+| Plan | Name | Status |
+|------|------|--------|
+| 05-01 | Feedback learning foundation | Complete |
+| 05-02 | Feedback MCP handlers | Pending |
 
 ### What Was Delivered (Phase 4)
 
@@ -35,6 +42,15 @@ Progress: [##########] 100% (10/10 plans estimated)
 3. **Strategy preferences module** with get/save/initialize functions following SQLite bridge pattern
 4. **Tool_description documentation** enabling AI client discovery of suggest_toolpath_strategy
 5. **Three response statuses** (success, no_features, no_tool_available) with graceful error handling
+
+### What Was Delivered (Phase 5 - In Progress)
+
+**Plan 01 - Feedback learning foundation:**
+1. **feedback_learning module** with SQLite storage, recency weighting, confidence adjustment, and context matching
+2. **cam_feedback_history SQLite table** with full context snapshots and 3 indexes (material_geometry, operation_type, created_at)
+3. **Exponential decay recency weighting** using W = e^(-lambda*t) with 30-day halflife default
+4. **Confidence adjustment** requiring 3+ samples, 0.20 floor, linear blend to 10 samples, 0.60 tentative threshold
+5. **Material family matching** with LIKE queries for cross-material learning
 
 ## Accumulated Decisions
 
@@ -74,6 +90,14 @@ Progress: [##########] 100% (10/10 plans estimated)
 | 04-02 | Feature processing priority order | drilling -> roughing -> finishing |
 | 04-02 | User preference override mechanism | Stored preferences replace default rules |
 | 04-02 | Source attribution for recommendations | Tracks default_rules vs user_preference origin |
+| 05-01 | Exponential decay halflife: 30 days | Balances recent feedback importance with historical stability |
+| 05-01 | MIN_SAMPLES = 3 before confidence adjustment | Prevents noisy adjustments from 1-2 samples |
+| 05-01 | CONFIDENCE_FLOOR = 0.20 | Prevents death spiral where low confidence → rejection → lower confidence |
+| 05-01 | Explicit feedback 2x weight multiplier | Explicit good/bad is higher signal than implicit accept/reject |
+| 05-01 | FULL_TRUST_SAMPLES = 10 | At 10+ samples, acceptance rate fully replaces base confidence |
+| 05-01 | TENTATIVE_THRESHOLD = 0.60 | Flag suggestions below this for user awareness |
+| 05-01 | Material family matching with LIKE | Enables cross-material learning (e.g., "6061 aluminum" → "aluminum") |
+| 05-01 | Pure Python for recency/confidence modules | No MCP/Fusion dependencies → easily unit testable |
 
 ## Lessons Learned
 
@@ -108,17 +132,26 @@ Progress: [##########] 100% (10/10 plans estimated)
 5. **Priority-based feature processing** - Ensures correct machining workflow (drill, rough, finish)
 6. **Informative error responses** - Include diagnostic data (geometry_found), limitations documentation, and actionable next_steps rather than just "failed"
 
+### Phase 5
+1. **Exponential decay time weighting pattern** - W = e^(-lambda*t) where lambda = ln(2) / halflife_days, t = age in days
+2. **Confidence blending formula** - adjusted = base * (1-w) + acceptance * w, where w = min(1.0, samples / FULL_TRUST_SAMPLES)
+3. **Pure Python temporal modules** - recency_weighting and confidence_adjuster use only stdlib (math, datetime, typing)
+4. **UTC-aware datetime handling** - datetime.now(timezone.utc) prevents timezone bugs
+5. **JSON serialization consistency** - json.dumps(obj, sort_keys=True) for stable keying in conflict detection
+6. **Separate CREATE INDEX statements** - SQLite doesn't support inline INDEX in CREATE TABLE
+
 ## Session Continuity
 
-Last session: 2026-02-05
-Stopped at: Phase 4 complete (toolpath strategy suggestions)
+Last session: 2026-02-06
+Stopped at: Completed 05-01-PLAN.md (feedback learning foundation)
 Resume file: None
 
 ## Next Steps
 
-Phase 5: Learning System
+Phase 5 Plan 02: Feedback MCP Handlers
 - record_user_choice MCP operation for capturing user corrections
-- Learning system to improve recommendations based on user feedback
-- Confidence scoring improvements
+- Integration of feedback learning into existing MCP operations (stock_setup, toolpath_strategy)
+- initialize_feedback_schema() call on add-in startup
+- Tool_description updates for record_user_choice discoverability
 
-Command: `/gsd:research 5` to research Phase 5, then `/gsd:plan 05-01`
+Command: `/gsd:plan 05-02` to plan Plan 02
