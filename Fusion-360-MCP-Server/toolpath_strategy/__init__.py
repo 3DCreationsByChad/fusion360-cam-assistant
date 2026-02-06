@@ -13,36 +13,22 @@ Components:
 - operation_mapper: Feature-to-operation mapping with condition evaluation
 """
 
-# Core material and feeds/speeds modules (available in Task 1)
+# Import all modules
 from .material_library import MATERIAL_LIBRARY, get_material_properties
 from .feeds_speeds import calculate_feeds_speeds
+from .tool_selector import select_best_tool
+from .operation_mapper import map_feature_to_operations, OPERATION_RULES
 
-# Tool selector and operation mapper (available in Task 2)
-# Using graceful import fallback pattern to allow Task 1 completion
-try:
-    from .tool_selector import select_best_tool
-    TOOL_SELECTOR_AVAILABLE = True
-except ImportError:
-    TOOL_SELECTOR_AVAILABLE = False
-
-try:
-    from .operation_mapper import map_feature_to_operations, OPERATION_RULES
-    OPERATION_MAPPER_AVAILABLE = True
-except ImportError:
-    OPERATION_MAPPER_AVAILABLE = False
-
-# Export all available functions
+# Export all public APIs
 __all__ = [
     # Material library
     "MATERIAL_LIBRARY",
     "get_material_properties",
     # Feeds and speeds
     "calculate_feeds_speeds",
+    # Tool selector
+    "select_best_tool",
+    # Operation mapper
+    "map_feature_to_operations",
+    "OPERATION_RULES"
 ]
-
-# Add conditional exports
-if TOOL_SELECTOR_AVAILABLE:
-    __all__.append("select_best_tool")
-
-if OPERATION_MAPPER_AVAILABLE:
-    __all__.extend(["map_feature_to_operations", "OPERATION_RULES"])
