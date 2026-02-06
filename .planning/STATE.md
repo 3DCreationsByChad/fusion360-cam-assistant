@@ -2,31 +2,39 @@
 
 **Last Updated:** 2026-02-05
 **Phase:** 4 - Toolpath Strategy Suggestions
-**Status:** In Progress
+**Status:** Phase Complete
 
 ## Current Position
 
 Phase: 4 of 5 (Toolpath Strategy Suggestions)
-Plan: 01 of 02 in phase
-Status: Plan 01 complete
-Last activity: 2026-02-05 - Completed 04-01-PLAN.md (toolpath strategy rules engine)
+Plan: 02 of 02 in phase
+Status: Phase complete
+Last activity: 2026-02-05 - Completed 04-02-PLAN.md (strategy preferences and MCP handler)
 
-Progress: [#########-] 90% (9/10 plans estimated)
+Progress: [##########] 100% (10/10 plans estimated)
 
 ### Phase 4 Progress
 
 | Plan | Name | Status |
 |------|------|--------|
 | 04-01 | Toolpath strategy rules engine | Complete |
-| 04-02 | MCP integration | Pending |
+| 04-02 | Strategy preferences and MCP handler | Complete |
 
-### What Was Delivered (Phase 4, Plan 01)
+### What Was Delivered (Phase 4)
 
+**Plan 01 - Toolpath strategy rules engine:**
 1. **toolpath_strategy module** with material_library, feeds_speeds, tool_selector, operation_mapper
 2. **Material database** with 6 materials (aluminum, mild_steel, stainless_steel, brass, plastic, wood) and partial matching
 3. **Feeds/speeds calculator** using industry formulas: RPM = (SFM * 3.82) / diameter_inches
 4. **Tool selector** with 80% corner radius rule and flute length constraint (depth * 1.2)
 5. **Operation mapper** with conditional rules for holes (12mm threshold), pockets (10mm depth), slots
+
+**Plan 02 - Strategy preferences and MCP handler:**
+1. **suggest_toolpath_strategy MCP operation** processing features in priority order with per-feature recommendations
+2. **cam_strategy_preferences SQLite table** for storing and retrieving user strategy choices
+3. **Strategy preferences module** with get/save/initialize functions following SQLite bridge pattern
+4. **Tool_description documentation** enabling AI client discovery of suggest_toolpath_strategy
+5. **Three response statuses** (success, no_features, no_tool_available) with graceful error handling
 
 ## Accumulated Decisions
 
@@ -61,6 +69,11 @@ Progress: [#########-] 90% (9/10 plans estimated)
 | 04-01 | Chip load ranges in inches/tooth | Aligns with imperial-based SFM formula |
 | 04-01 | Priority system: 1=drilling, 2=roughing, 3=finishing | Ensures correct machining sequence |
 | 04-01 | Partial material matching with word overlap | "6061 aluminum" matches "aluminum" |
+| 04-02 | Three response statuses for strategy suggestions | success, no_features, no_tool_available per feature |
+| 04-02 | Tool type filter for drilling operations | "drill" for holes, None for roughing/finishing |
+| 04-02 | Feature processing priority order | drilling -> roughing -> finishing |
+| 04-02 | User preference override mechanism | Stored preferences replace default rules |
+| 04-02 | Source attribution for recommendations | Tracks default_rules vs user_preference origin |
 
 ## Lessons Learned
 
@@ -87,17 +100,24 @@ Progress: [#########-] 90% (9/10 plans estimated)
 5. **Fusion loads add-ins from AppData, not working directory** - Must deploy or symlink
 6. **Package-relative imports required** - from .module when loaded via from . import
 
+### Phase 4
+1. **MCP handler pattern for CAM operations** - Import guard, feature analysis, preference check, tool selection, feeds/speeds
+2. **Per-feature recommendations structure** - Roughing/finishing ops, tool selection with 80% rule, cutting parameters
+3. **Graceful tool selection failures** - Continue processing other features when no tool fits
+4. **AI client caching of tool_description** - Restart both add-in and client after documentation updates
+5. **Priority-based feature processing** - Ensures correct machining workflow (drill, rough, finish)
+
 ## Session Continuity
 
 Last session: 2026-02-05
-Stopped at: Phase 4, Plan 01 complete (toolpath strategy rules engine)
+Stopped at: Phase 4 complete (toolpath strategy suggestions)
 Resume file: None
 
 ## Next Steps
 
-Phase 4, Plan 02: MCP Integration
-- suggest_toolpath_strategy MCP handler
-- Integrate toolpath_strategy module with Fusion API
-- Strategy preferences table (optional)
+Phase 5: Learning System
+- record_user_choice MCP operation for capturing user corrections
+- Learning system to improve recommendations based on user feedback
+- Confidence scoring improvements
 
-Command: `/gsd:execute-phase 4 --plan 02` or `/gsd:plan 04-02`
+Command: `/gsd:research 5` to research Phase 5, then `/gsd:plan 05-01`
