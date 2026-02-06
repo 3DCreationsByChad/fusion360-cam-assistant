@@ -11,6 +11,9 @@ This module extends the Fusion 360 MCP Server with CAM-specific operations:
 - suggest_stock_setup: Recommend stock dimensions and orientation
 - suggest_toolpath_strategy: Recommend machining strategies
 - record_user_choice: Store user feedback for learning
+- get_feedback_stats: View learning statistics
+- export_feedback_history: Export feedback data as CSV or JSON
+- clear_feedback_history: Reset learning data
 - suggest_post_processor: Match machine to post-processor
 """
 
@@ -70,6 +73,24 @@ try:
     TOOLPATH_STRATEGY_AVAILABLE = True
 except ImportError:
     TOOLPATH_STRATEGY_AVAILABLE = False
+
+# Feedback learning module for recording user choices and adjusting
+# confidence scores based on historical acceptance rates
+try:
+    from .feedback_learning import (
+        initialize_feedback_schema,
+        record_feedback,
+        get_feedback_statistics,
+        export_feedback_history,
+        clear_feedback_history,
+        get_matching_feedback,
+        adjust_confidence_from_feedback,
+        should_notify_learning,
+        get_conflicting_choices
+    )
+    FEEDBACK_LEARNING_AVAILABLE = True
+except ImportError:
+    FEEDBACK_LEARNING_AVAILABLE = False
 
 
 # =============================================================================
@@ -1155,6 +1176,43 @@ def handle_suggest_stock_setup(arguments: dict) -> dict:
                 })
 
         # ---------------------------------------------------------------------
+        # Learning integration: adjust confidence from feedback history
+        # ---------------------------------------------------------------------
+        learning_metadata = None
+        if FEEDBACK_LEARNING_AVAILABLE and mcp_call_func:
+            try:
+                initialize_feedback_schema(mcp_call_func)
+                feedback_history = get_matching_feedback(
+                    operation_type="stock_setup",
+                    material=material,
+                    geometry_type=geometry_type,
+                    limit=50,
+                    mcp_call_func=mcp_call_func
+                )
+                if feedback_history:
+                    base_confidence = 0.8  # Default stock suggestion confidence
+                    adjusted_confidence, learning_source = adjust_confidence_from_feedback(
+                        base_confidence=base_confidence,
+                        feedback_history=feedback_history
+                    )
+                    learning_metadata = {
+                        "sample_count": len(feedback_history),
+                        "adjusted_confidence": adjusted_confidence,
+                        "source": learning_source
+                    }
+                    # Override source tag if learning has kicked in
+                    if learning_source.startswith("user_preference"):
+                        source = f"from: {learning_source}"
+                    # First-time learning notification
+                    if should_notify_learning(feedback_history):
+                        learning_metadata["notification"] = (
+                            f"I noticed patterns in your preferences for {material}. "
+                            "Future suggestions will reflect what you've chosen before."
+                        )
+            except Exception:
+                pass  # Learning is non-critical, don't break suggestions
+
+        # ---------------------------------------------------------------------
         # Determine offsets to use
         # Priority: custom_offsets > preference > DEFAULT_OFFSETS
         # ---------------------------------------------------------------------
@@ -1335,7 +1393,8 @@ def handle_suggest_stock_setup(arguments: dict) -> dict:
             "geometry_type": geometry_type,
             "unit_system": unit_system,
             "raw_dimensions": stock_dims.get("raw_dimensions"),
-            "rounded_to_standard": stock_dims.get("rounded_to_standard")
+            "rounded_to_standard": stock_dims.get("rounded_to_standard"),
+            "learning_metadata": learning_metadata
         }
 
         return _format_response(response)
@@ -1603,6 +1662,40 @@ def handle_suggest_toolpath_strategy(arguments: dict) -> dict:
                         preferences_by_feature_type[ftype] = pref
 
         # ---------------------------------------------------------------------
+        # Learning integration: adjust confidence from feedback history
+        # ---------------------------------------------------------------------
+        learning_metadata = None
+        if FEEDBACK_LEARNING_AVAILABLE and mcp_call_func:
+            try:
+                initialize_feedback_schema(mcp_call_func)
+                feedback_history = get_matching_feedback(
+                    operation_type="toolpath_strategy",
+                    material=material,
+                    geometry_type=geometry_type,
+                    limit=50,
+                    mcp_call_func=mcp_call_func
+                )
+                if feedback_history:
+                    base_confidence = 0.8  # Default toolpath strategy confidence
+                    adjusted_confidence, learning_source = adjust_confidence_from_feedback(
+                        base_confidence=base_confidence,
+                        feedback_history=feedback_history
+                    )
+                    learning_metadata = {
+                        "sample_count": len(feedback_history),
+                        "adjusted_confidence": adjusted_confidence,
+                        "source": learning_source
+                    }
+                    # First-time learning notification
+                    if should_notify_learning(feedback_history):
+                        learning_metadata["notification"] = (
+                            f"I noticed patterns in your preferences for {material}. "
+                            "Future suggestions will reflect what you've chosen before."
+                        )
+            except Exception:
+                pass  # Learning is non-critical, don't break suggestions
+
+        # ---------------------------------------------------------------------
         # Process each feature to generate suggestions
         # ---------------------------------------------------------------------
         suggestions = []
@@ -1750,7 +1843,8 @@ def handle_suggest_toolpath_strategy(arguments: dict) -> dict:
             "suggestions": suggestions,
             "processing_order": "drilling -> roughing -> finishing",
             "source": source,
-            "note": "These are starting-point suggestions. Adjust based on machine rigidity, workholding, and tool condition."
+            "note": "These are starting-point suggestions. Adjust based on machine rigidity, workholding, and tool condition.",
+            "learning_metadata": learning_metadata
         }
 
         return _format_response(response)
@@ -1758,6 +1852,294 @@ def handle_suggest_toolpath_strategy(arguments: dict) -> dict:
     except Exception as e:
         import traceback
         return _format_error(f"Failed to suggest toolpath strategy: {str(e)}", traceback.format_exc())
+
+
+# =============================================================================
+# FEEDBACK LEARNING HANDLERS
+# =============================================================================
+
+def handle_record_user_choice(arguments: dict) -> dict:
+    """
+    Record user acceptance or override of a suggestion for learning.
+
+    Stores feedback events in SQLite via MCP bridge. The system learns from
+    these events and adjusts future suggestion confidence scores based on
+    acceptance rates.
+
+    Arguments:
+        operation_type (str, required): 'stock_setup', 'toolpath_strategy', 'tool_selection'
+        material (str, required): Material name
+        geometry_type (str, optional): Geometry classification
+        body_name (str, optional): Part body name for auto-detection of geometry_type
+        suggestion (dict, required): Original suggestion that was presented
+        user_choice (dict, optional): What user selected instead. NULL/omit = accepted suggestion.
+        feedback_type (str, optional): Default 'implicit'. Can be 'explicit_good' or 'explicit_bad'.
+        note (str, optional): Reason for override
+
+    Returns:
+        Success response with recorded feedback details or error
+    """
+    try:
+        # Check module availability
+        if not FEEDBACK_LEARNING_AVAILABLE:
+            return _format_error(
+                "Feedback learning module not available",
+                "Import failed for feedback_learning module"
+            )
+
+        # Validate required fields
+        operation_type = arguments.get('operation_type')
+        material = arguments.get('material')
+        suggestion = arguments.get('suggestion')
+
+        if not operation_type:
+            return _format_error("Missing required field: operation_type")
+        if not material:
+            return _format_error("Missing required field: material")
+        if not suggestion:
+            return _format_error("Missing required field: suggestion")
+
+        # Get or auto-detect geometry_type
+        geometry_type = arguments.get('geometry_type')
+        body_name = arguments.get('body_name')
+
+        if not geometry_type and body_name:
+            # Auto-detect geometry_type from body_name
+            if not FUSION_AVAILABLE:
+                return _format_error("Fusion 360 API not available for geometry auto-detection")
+
+            try:
+                # Run geometry analysis
+                analysis_result = handle_analyze_geometry_for_cam({
+                    'body_names': [body_name],
+                    'analysis_type': 'full'
+                })
+
+                # Extract features
+                analysis_data = None
+                content = analysis_result.get('content', [])
+                if content and len(content) > 0:
+                    analysis_data = json.loads(content[0].get('text', '{}'))
+
+                if analysis_data and not analysis_data.get('error'):
+                    body_result = analysis_data.get('results', [{}])[0]
+                    recognized_features = body_result.get('recognized_features', {})
+                    all_features = []
+                    if recognized_features:
+                        all_features.extend(recognized_features.get('holes', []))
+                        all_features.extend(recognized_features.get('pockets', []))
+                        all_features.extend(recognized_features.get('slots', []))
+
+                    # Classify geometry type
+                    if STOCK_SUGGESTIONS_AVAILABLE:
+                        geometry_type = classify_geometry_type(all_features)
+            except Exception:
+                pass  # Failed to auto-detect, will check below
+
+        if not geometry_type:
+            return _format_error(
+                "Missing geometry_type",
+                "Provide either geometry_type or body_name for auto-detection"
+            )
+
+        # Get other optional fields
+        user_choice = arguments.get('user_choice')
+        feedback_type = arguments.get('feedback_type', 'implicit')
+        note = arguments.get('note')
+
+        # Auto-detect feedback_type if 'implicit'
+        if feedback_type == 'implicit':
+            if user_choice is None:
+                feedback_type = 'implicit_accept'
+            else:
+                feedback_type = 'implicit_reject'
+
+        # Build context snapshot
+        context = {
+            "operation_type": operation_type,
+            "material": material,
+            "geometry_type": geometry_type
+        }
+
+        # Get MCP call function
+        mcp_call_func = arguments.get('_mcp_call_func')
+        if not mcp_call_func:
+            return _format_error("MCP call function not available")
+
+        # Initialize schema (safe to call multiple times)
+        initialize_feedback_schema(mcp_call_func)
+
+        # Record feedback
+        record_feedback(
+            operation_type=operation_type,
+            material=material,
+            geometry_type=geometry_type,
+            suggestion=suggestion,
+            user_choice=user_choice,
+            feedback_type=feedback_type,
+            note=note,
+            mcp_call_func=mcp_call_func
+        )
+
+        # Build response
+        response = {
+            "status": "recorded",
+            "operation_type": operation_type,
+            "feedback_type": feedback_type,
+            "message": "Feedback recorded successfully",
+            "context": context
+        }
+
+        return _format_response(response)
+
+    except Exception as e:
+        import traceback
+        return _format_error(f"Failed to record user choice: {str(e)}", traceback.format_exc())
+
+
+def handle_get_feedback_stats(arguments: dict) -> dict:
+    """
+    Get feedback statistics for learning system.
+
+    Returns acceptance rates broken down by operation type, material,
+    and geometry type.
+
+    Arguments:
+        operation_type (str, optional): Filter stats to specific operation type
+
+    Returns:
+        Statistics dict with overall and per-category breakdowns
+    """
+    try:
+        # Check module availability
+        if not FEEDBACK_LEARNING_AVAILABLE:
+            return _format_error(
+                "Feedback learning module not available",
+                "Import failed for feedback_learning module"
+            )
+
+        # Get MCP call function
+        mcp_call_func = arguments.get('_mcp_call_func')
+        if not mcp_call_func:
+            return _format_error("MCP call function not available")
+
+        # Initialize schema
+        initialize_feedback_schema(mcp_call_func)
+
+        # Get optional filter
+        operation_type = arguments.get('operation_type')
+
+        # Get statistics
+        stats = get_feedback_statistics(operation_type, mcp_call_func)
+
+        return _format_response(stats)
+
+    except Exception as e:
+        import traceback
+        return _format_error(f"Failed to get feedback stats: {str(e)}", traceback.format_exc())
+
+
+def handle_export_feedback_history(arguments: dict) -> dict:
+    """
+    Export feedback history as CSV or JSON.
+
+    Arguments:
+        format (str, optional): 'csv' or 'json' (default: 'json')
+        operation_type (str, optional): Filter export to specific operation type
+
+    Returns:
+        Export string in requested format
+    """
+    try:
+        # Check module availability
+        if not FEEDBACK_LEARNING_AVAILABLE:
+            return _format_error(
+                "Feedback learning module not available",
+                "Import failed for feedback_learning module"
+            )
+
+        # Get MCP call function
+        mcp_call_func = arguments.get('_mcp_call_func')
+        if not mcp_call_func:
+            return _format_error("MCP call function not available")
+
+        # Initialize schema
+        initialize_feedback_schema(mcp_call_func)
+
+        # Get arguments
+        format_type = arguments.get('format', 'json')
+        operation_type = arguments.get('operation_type')
+
+        # Export history
+        export_data = export_feedback_history(format_type, operation_type, mcp_call_func)
+
+        response = {
+            "status": "success",
+            "format": format_type,
+            "data": export_data
+        }
+
+        return _format_response(response)
+
+    except Exception as e:
+        import traceback
+        return _format_error(f"Failed to export feedback history: {str(e)}", traceback.format_exc())
+
+
+def handle_clear_feedback_history(arguments: dict) -> dict:
+    """
+    Clear feedback history (all or specific operation type).
+
+    Requires explicit confirmation to prevent accidental data loss.
+
+    Arguments:
+        operation_type (str, optional): If provided, clear only that category. If omitted, clear all.
+        confirm (bool, required): Must be true to proceed (safety check)
+
+    Returns:
+        Success response with deleted count
+    """
+    try:
+        # Check module availability
+        if not FEEDBACK_LEARNING_AVAILABLE:
+            return _format_error(
+                "Feedback learning module not available",
+                "Import failed for feedback_learning module"
+            )
+
+        # Check confirmation
+        confirm = arguments.get('confirm')
+        if confirm != True:
+            return _format_error(
+                "Confirmation required",
+                "Set confirm=true to clear feedback history"
+            )
+
+        # Get MCP call function
+        mcp_call_func = arguments.get('_mcp_call_func')
+        if not mcp_call_func:
+            return _format_error("MCP call function not available")
+
+        # Initialize schema
+        initialize_feedback_schema(mcp_call_func)
+
+        # Get optional filter
+        operation_type = arguments.get('operation_type')
+
+        # Clear history
+        deleted_count = clear_feedback_history(operation_type, mcp_call_func)
+
+        response = {
+            "status": "success",
+            "deleted_count": deleted_count,
+            "operation_type": operation_type if operation_type else "all"
+        }
+
+        return _format_response(response)
+
+    except Exception as e:
+        import traceback
+        return _format_error(f"Failed to clear feedback history: {str(e)}", traceback.format_exc())
 
 
 # =============================================================================
@@ -1776,8 +2158,11 @@ def route_cam_operation(operation: str, arguments: dict) -> dict:
         'analyze_geometry_for_cam': handle_analyze_geometry_for_cam,
         'suggest_stock_setup': handle_suggest_stock_setup,
         'suggest_toolpath_strategy': handle_suggest_toolpath_strategy,
-        # Phase 5+
-        # 'record_user_choice': handle_record_user_choice,
+        'record_user_choice': handle_record_user_choice,
+        'get_feedback_stats': handle_get_feedback_stats,
+        'export_feedback_history': handle_export_feedback_history,
+        'clear_feedback_history': handle_clear_feedback_history,
+        # Phase 6+
         # 'suggest_post_processor': handle_suggest_post_processor,
     }
 
