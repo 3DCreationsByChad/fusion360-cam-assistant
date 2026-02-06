@@ -1,37 +1,32 @@
 # Project State
 
 **Last Updated:** 2026-02-05
-**Phase:** 3 - Stock Suggestions
-**Status:** Complete
+**Phase:** 4 - Toolpath Strategy Suggestions
+**Status:** In Progress
 
 ## Current Position
 
-Phase: 3 of 5 (Stock Suggestions)
-Plan: 03 of 03 in phase
-Status: Complete
-Last activity: 2026-02-05 - Phase 3 verified in Fusion 360
+Phase: 4 of 5 (Toolpath Strategy Suggestions)
+Plan: 01 of 02 in phase
+Status: Plan 01 complete
+Last activity: 2026-02-05 - Completed 04-01-PLAN.md (toolpath strategy rules engine)
 
-Progress: [########--] 80% (8/10 plans estimated)
+Progress: [#########-] 90% (9/10 plans estimated)
 
-### Phase 3 Progress
+### Phase 4 Progress
 
 | Plan | Name | Status |
 |------|------|--------|
-| 03-01 | Stock calculation foundation | Complete |
-| 03-02 | Cylindrical detection and preference store | Complete |
-| 03-03 | MCP tool integration | Complete |
+| 04-01 | Toolpath strategy rules engine | Complete |
+| 04-02 | MCP integration | Pending |
 
-### What Was Delivered (Phase 3)
+### What Was Delivered (Phase 4, Plan 01)
 
-1. **stock_suggestions module** with stock calculator, standard size tables, cylindrical detection, preference store
-2. **suggest_stock_setup MCP operation** — callable via MCP protocol, returns stock dimensions with orientation
-3. **Three interactive response types**: success, preference_needed, orientation_choice_needed
-4. **SQLite preference storage** via cam_stock_preferences and cam_machine_profiles tables
-5. **Deployment junction** from Fusion AppData to git repo for live code updates
-
-### Key Deployment Discovery
-
-Fusion 360 loads add-ins from `AppData\Roaming\Autodesk\ApplicationPlugins\`, NOT the git repo. A directory junction now links the two. MCP tool discoverability requires operations to be documented in tool_description — "coming soon" makes operations invisible to AI clients.
+1. **toolpath_strategy module** with material_library, feeds_speeds, tool_selector, operation_mapper
+2. **Material database** with 6 materials (aluminum, mild_steel, stainless_steel, brass, plastic, wood) and partial matching
+3. **Feeds/speeds calculator** using industry formulas: RPM = (SFM * 3.82) / diameter_inches
+4. **Tool selector** with 80% corner radius rule and flute length constraint (depth * 1.2)
+5. **Operation mapper** with conditional rules for holes (12mm threshold), pockets (10mm depth), slots
 
 ## Accumulated Decisions
 
@@ -60,6 +55,12 @@ Fusion 360 loads add-ins from `AppData\Roaming\Autodesk\ApplicationPlugins\`, NO
 | 03-03 | Close alternatives threshold: 15% score gap | Surface viable options without noise |
 | 03-03 | Relative imports for add-in package context | Absolute imports fail when loaded via from . import |
 | 03-03 | tool_readme documentation required for discoverability | AI won't call undocumented operations |
+| 04-01 | Stepover percentages: 45% roughing, 15% finishing | Midpoint of research ranges (40-50% and 10-20%) |
+| 04-01 | Stepdown: 1.0x tool diameter | Midpoint of 0.5-1.5x research range |
+| 04-01 | RPM cap at 24000 | Typical spindle maximum for consumer CNC |
+| 04-01 | Chip load ranges in inches/tooth | Aligns with imperial-based SFM formula |
+| 04-01 | Priority system: 1=drilling, 2=roughing, 3=finishing | Ensures correct machining sequence |
+| 04-01 | Partial material matching with word overlap | "6061 aluminum" matches "aluminum" |
 
 ## Lessons Learned
 
@@ -89,14 +90,14 @@ Fusion 360 loads add-ins from `AppData\Roaming\Autodesk\ApplicationPlugins\`, NO
 ## Session Continuity
 
 Last session: 2026-02-05
-Stopped at: Phase 3 complete, ready for Phase 4
+Stopped at: Phase 4, Plan 01 complete (toolpath strategy rules engine)
 Resume file: None
 
 ## Next Steps
 
-Phase 4: Toolpath Strategy Suggestions
-- suggest_toolpath_strategy handler
-- Rules engine for feature-to-operation mapping
-- Strategy preferences table
+Phase 4, Plan 02: MCP Integration
+- suggest_toolpath_strategy MCP handler
+- Integrate toolpath_strategy module with Fusion API
+- Strategy preferences table (optional)
 
-Command: `/gsd:plan-phase 4`
+Command: `/gsd:execute-phase 4 --plan 02` or `/gsd:plan 04-02`
