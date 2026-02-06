@@ -348,7 +348,20 @@ All arguments are optional. Returns one of three response types:
 - "preference_needed": No stored preference for this material + geometry — includes suggested_defaults
 - "orientation_choice_needed": Multiple valid orientations with low confidence — includes alternatives to choose from
 
-### suggest_toolpath_strategy - Get Strategy Recommendations (coming soon)
+### suggest_toolpath_strategy - Get Strategy Recommendations
+{
+  "operation": "suggest_toolpath_strategy",
+  "body_name": "Part1",
+  "material": "Aluminum",
+  "is_carbide": true,
+  "use_defaults": false,
+  "save_as_preference": false
+}
+All arguments are optional. Returns per-feature operation recommendations:
+- "success": Suggestions with roughing/finishing operations, tool selection, and feeds/speeds per feature
+- "no_features": No machinable features detected in the part
+Each suggestion includes recommended_tool, cutting_parameters (RPM, feed rate, stepover, stepdown), and confidence scores.
+
 ### record_user_choice - Store Feedback for Learning (coming soon)
 ### suggest_post_processor - Match Machine to Post (coming soon)
 

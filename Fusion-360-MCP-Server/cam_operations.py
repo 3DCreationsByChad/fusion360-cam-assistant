@@ -55,6 +55,22 @@ try:
 except ImportError:
     STOCK_SUGGESTIONS_AVAILABLE = False
 
+# Toolpath strategy module for operation mapping, tool selection,
+# feeds/speeds calculation, and strategy preference storage
+try:
+    from .toolpath_strategy import (
+        get_material_properties,
+        calculate_feeds_speeds,
+        select_best_tool,
+        map_feature_to_operations,
+        get_strategy_preference,
+        save_strategy_preference,
+        initialize_strategy_schema
+    )
+    TOOLPATH_STRATEGY_AVAILABLE = True
+except ImportError:
+    TOOLPATH_STRATEGY_AVAILABLE = False
+
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -1330,6 +1346,369 @@ def handle_suggest_stock_setup(arguments: dict) -> dict:
 
 
 # =============================================================================
+# suggest_toolpath_strategy - Suggest CAM operations for features
+# =============================================================================
+
+def handle_suggest_toolpath_strategy(arguments: dict) -> dict:
+    """
+    Suggest toolpath strategies based on feature analysis.
+
+    Main MCP operation that analyzes part features, recommends CAM operations
+    (roughing/finishing), selects tools, and calculates cutting parameters.
+    Implements strategy preference storage via MCP SQLite bridge.
+
+    Arguments:
+        body_name (str, optional): Specific body to analyze (default: first body)
+        material (str, optional): Material name for SFM lookup (default: from body or "aluminum")
+        use_defaults (bool): Skip preference check, use default rules (default: False)
+        save_as_preference (bool): Save results as new preferences (default: False)
+        is_carbide (bool): Whether tools are carbide (default: True)
+
+    Returns:
+        One of two status responses:
+
+        "success": Full strategy suggestions returned
+            {
+                "status": "success",
+                "material": str,
+                "is_carbide": bool,
+                "feature_count": int,
+                "suggestions": [
+                    {
+                        "feature": {...},
+                        "roughing": {...},
+                        "finishing": {...},
+                        "recommended_tool": {...},
+                        "cutting_parameters": {...}
+                    }
+                ],
+                "processing_order": str,
+                "source": str,
+                "note": str
+            }
+
+        "no_features": No machinable features detected
+            {
+                "status": "no_features",
+                "message": str,
+                "body_name": str
+            }
+    """
+    try:
+        # Check module availability
+        if not TOOLPATH_STRATEGY_AVAILABLE:
+            return _format_error(
+                "Toolpath strategy module not available",
+                "Import failed for toolpath_strategy module"
+            )
+
+        if not FUSION_AVAILABLE:
+            return _format_error("Fusion 360 API not available")
+
+        app = _get_app()
+        design = adsk.fusion.Design.cast(app.activeProduct)
+
+        if not design:
+            return _format_error("No active design. Open a design document first.")
+
+        root_comp = design.rootComponent
+
+        # Get body to analyze
+        body_name = arguments.get('body_name')
+        body = None
+
+        if body_name:
+            # Find specific body by name
+            for b in root_comp.bRepBodies:
+                if b.name == body_name:
+                    body = b
+                    break
+            if not body:
+                return _format_error(f"Body '{body_name}' not found in design")
+        else:
+            # Use first body
+            if root_comp.bRepBodies.count > 0:
+                body = root_comp.bRepBodies.item(0)
+            else:
+                return _format_error("No bodies found in design")
+
+        # Get material from body or arguments
+        material = arguments.get('material')
+        if not material:
+            if body.material:
+                material = body.material.name
+            else:
+                material = "aluminum"
+
+        # Parse other arguments
+        use_defaults = arguments.get('use_defaults', False)
+        save_as_pref = arguments.get('save_as_preference', False)
+        is_carbide = arguments.get('is_carbide', True)
+
+        # ---------------------------------------------------------------------
+        # Run geometry analysis to get features
+        # ---------------------------------------------------------------------
+        analysis_result = handle_analyze_geometry_for_cam({
+            'body_names': [body.name],
+            'analysis_type': 'full'
+        })
+
+        # Extract body result from analysis
+        analysis_data = None
+        try:
+            content = analysis_result.get('content', [])
+            if content and len(content) > 0:
+                analysis_data = json.loads(content[0].get('text', '{}'))
+        except Exception:
+            pass
+
+        if not analysis_data or analysis_data.get('error'):
+            return _format_error(
+                "Geometry analysis failed",
+                str(analysis_data.get('error') if analysis_data else 'Unknown error')
+            )
+
+        body_result = analysis_data.get('results', [{}])[0]
+
+        # Get recognized features
+        recognized_features = body_result.get('recognized_features', {})
+
+        # Build feature list with priority ordering
+        features_by_priority = []
+
+        # Add features in priority order: holes (drilling) first, then pockets, then slots
+        if recognized_features.get('holes'):
+            for hole in recognized_features['holes']:
+                hole['type'] = 'hole'
+                hole['priority'] = 1  # Drilling first
+                features_by_priority.append(hole)
+
+        if recognized_features.get('pockets'):
+            for pocket in recognized_features['pockets']:
+                pocket['type'] = 'pocket'
+                pocket['priority'] = 2  # Roughing second
+                features_by_priority.append(pocket)
+
+        if recognized_features.get('slots'):
+            for slot in recognized_features['slots']:
+                slot['type'] = 'slot'
+                slot['priority'] = 2  # Roughing second (same as pockets)
+                features_by_priority.append(slot)
+
+        # If no features detected
+        if not features_by_priority:
+            return _format_response({
+                "status": "no_features",
+                "message": "No machinable features detected in the part. Detected features must include holes, pockets, or slots.",
+                "body_name": body.name,
+                "material": material
+            })
+
+        # ---------------------------------------------------------------------
+        # Get tool library
+        # ---------------------------------------------------------------------
+        tools_result = handle_get_tool_library({})
+        tools_data = None
+        try:
+            content = tools_result.get('content', [])
+            if content and len(content) > 0:
+                tools_data = json.loads(content[0].get('text', '{}'))
+        except Exception:
+            pass
+
+        if not tools_data or tools_data.get('error'):
+            return _format_error(
+                "Failed to get tool library",
+                str(tools_data.get('error') if tools_data else 'Unknown error')
+            )
+
+        available_tools = tools_data.get('tools', [])
+
+        if not available_tools:
+            return _format_error(
+                "No tools available in document library",
+                "Add tools to the document library before requesting toolpath suggestions"
+            )
+
+        # ---------------------------------------------------------------------
+        # Preference check
+        # ---------------------------------------------------------------------
+        mcp_call_func = arguments.get('_mcp_call_func')
+        preferences_by_feature_type = {}
+
+        if mcp_call_func and not use_defaults:
+            # Initialize schema (safe to call multiple times)
+            initialize_strategy_schema(mcp_call_func)
+
+            # Try to get stored preferences for each unique feature type
+            feature_types_seen = set()
+            for feature in features_by_priority:
+                ftype = feature.get('type', 'unknown')
+                if ftype not in feature_types_seen:
+                    feature_types_seen.add(ftype)
+                    pref = get_strategy_preference(material, ftype, mcp_call_func)
+                    if pref:
+                        preferences_by_feature_type[ftype] = pref
+
+        # ---------------------------------------------------------------------
+        # Process each feature to generate suggestions
+        # ---------------------------------------------------------------------
+        suggestions = []
+
+        for feature in features_by_priority:
+            feature_type = feature.get('type', 'unknown')
+
+            # Check if we have a preference override
+            preference = preferences_by_feature_type.get(feature_type)
+
+            # Map feature to operations (uses default rules)
+            operation_mapping = map_feature_to_operations(feature, material)
+
+            # Apply preference override if available
+            if preference and not use_defaults:
+                roughing_op = preference.get('preferred_roughing_op') or operation_mapping['roughing']['operation_type']
+                finishing_op = preference.get('preferred_finishing_op') or operation_mapping['finishing']['operation_type']
+                source = "from: user_preference"
+            else:
+                roughing_op = operation_mapping['roughing']['operation_type']
+                finishing_op = operation_mapping['finishing']['operation_type']
+                source = "from: default_rules"
+
+            # Select tool for this feature
+            # For drilling operations, filter to drills; otherwise use all endmills
+            tool_filter = "drill" if roughing_op == "drilling" else None
+            tool_selection = select_best_tool(feature, available_tools, tool_filter)
+
+            # Handle case where no tool fits
+            if tool_selection.get('status') != 'ok':
+                suggestion = {
+                    "feature": {
+                        "type": feature_type,
+                        "id": feature.get("id"),
+                        "dimensions": {}
+                    },
+                    "status": "no_tool_available",
+                    "reason": tool_selection.get('reason', 'No fitting tool found'),
+                    "constraint": tool_selection.get('constraint', {})
+                }
+
+                # Add relevant dimensions based on feature type
+                if feature_type == "hole":
+                    suggestion["feature"]["dimensions"]["diameter"] = feature.get("diameter")
+                    suggestion["feature"]["dimensions"]["depth"] = feature.get("depth")
+                elif feature_type in ["pocket", "slot"]:
+                    suggestion["feature"]["dimensions"]["depth"] = feature.get("depth")
+                    suggestion["feature"]["dimensions"]["width"] = feature.get("width")
+                    if feature.get("length"):
+                        suggestion["feature"]["dimensions"]["length"] = feature.get("length")
+
+                suggestions.append(suggestion)
+                continue
+
+            # Get selected tool
+            selected_tool = tool_selection['tool']
+
+            # Calculate feeds and speeds
+            cutting_params = calculate_feeds_speeds(
+                material=material,
+                tool=selected_tool,
+                is_carbide=is_carbide,
+                operation_type="roughing"
+            )
+
+            # Build suggestion for this feature
+            suggestion = {
+                "feature": {
+                    "type": feature_type,
+                    "id": feature.get("id"),
+                    "dimensions": {}
+                },
+                "roughing": {
+                    "operation_type": roughing_op,
+                    "confidence": operation_mapping['roughing']['confidence'],
+                    "reasoning": operation_mapping['roughing']['reasoning']
+                },
+                "finishing": {
+                    "operation_type": finishing_op,
+                    "confidence": operation_mapping['finishing']['confidence'],
+                    "reasoning": operation_mapping['finishing']['reasoning']
+                },
+                "recommended_tool": {
+                    "description": selected_tool.get("description", "Tool"),
+                    "diameter": selected_tool.get("diameter"),
+                    "type": selected_tool.get("type"),
+                    "flutes": selected_tool.get("flutes"),
+                    "reasoning": tool_selection.get("reasoning", "Best fitting tool")
+                },
+                "cutting_parameters": {
+                    "rpm": cutting_params.get("rpm"),
+                    "feed_rate": cutting_params.get("feed_rate"),
+                    "stepover_roughing": cutting_params.get("stepover_roughing"),
+                    "stepover_finishing": cutting_params.get("stepover_finishing"),
+                    "stepdown_roughing": cutting_params.get("stepdown_roughing")
+                }
+            }
+
+            # Add relevant dimensions based on feature type
+            if feature_type == "hole":
+                suggestion["feature"]["dimensions"]["diameter"] = feature.get("diameter")
+                suggestion["feature"]["dimensions"]["depth"] = feature.get("depth")
+            elif feature_type in ["pocket", "slot"]:
+                suggestion["feature"]["dimensions"]["depth"] = feature.get("depth")
+                suggestion["feature"]["dimensions"]["width"] = feature.get("width")
+                if feature.get("length"):
+                    suggestion["feature"]["dimensions"]["length"] = feature.get("length")
+                if feature.get("min_corner_radius"):
+                    suggestion["feature"]["dimensions"]["min_corner_radius"] = feature.get("min_corner_radius")
+
+            suggestions.append(suggestion)
+
+        # ---------------------------------------------------------------------
+        # Save preferences if requested
+        # ---------------------------------------------------------------------
+        if save_as_pref and mcp_call_func:
+            feature_types_saved = set()
+            for suggestion in suggestions:
+                if suggestion.get("status") == "no_tool_available":
+                    continue  # Skip suggestions without tools
+
+                ftype = suggestion["feature"]["type"]
+                if ftype in feature_types_saved:
+                    continue  # Already saved this feature type
+
+                feature_types_saved.add(ftype)
+
+                pref_dict = {
+                    "preferred_roughing_op": suggestion["roughing"]["operation_type"],
+                    "preferred_finishing_op": suggestion["finishing"]["operation_type"],
+                    "preferred_tool_diameter_mm": suggestion["recommended_tool"]["diameter"]["value"],
+                    "confidence_score": suggestion["roughing"]["confidence"]
+                }
+
+                save_strategy_preference(material, ftype, pref_dict, mcp_call_func)
+
+        # ---------------------------------------------------------------------
+        # Build final response
+        # ---------------------------------------------------------------------
+        response = {
+            "status": "success",
+            "material": material,
+            "is_carbide": is_carbide,
+            "feature_count": len(features_by_priority),
+            "suggestions": suggestions,
+            "processing_order": "drilling -> roughing -> finishing",
+            "source": source,
+            "note": "These are starting-point suggestions. Adjust based on machine rigidity, workholding, and tool condition."
+        }
+
+        return _format_response(response)
+
+    except Exception as e:
+        import traceback
+        return _format_error(f"Failed to suggest toolpath strategy: {str(e)}", traceback.format_exc())
+
+
+# =============================================================================
 # OPERATION ROUTER
 # =============================================================================
 
@@ -1344,8 +1723,8 @@ def route_cam_operation(operation: str, arguments: dict) -> dict:
         'get_tool_library': handle_get_tool_library,
         'analyze_geometry_for_cam': handle_analyze_geometry_for_cam,
         'suggest_stock_setup': handle_suggest_stock_setup,
-        # Phase 4+
-        # 'suggest_toolpath_strategy': handle_suggest_toolpath_strategy,
+        'suggest_toolpath_strategy': handle_suggest_toolpath_strategy,
+        # Phase 5+
         # 'record_user_choice': handle_record_user_choice,
         # 'suggest_post_processor': handle_suggest_post_processor,
     }

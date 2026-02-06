@@ -18,6 +18,12 @@ from .material_library import MATERIAL_LIBRARY, get_material_properties
 from .feeds_speeds import calculate_feeds_speeds
 from .tool_selector import select_best_tool
 from .operation_mapper import map_feature_to_operations, OPERATION_RULES
+from .strategy_preferences import (
+    get_strategy_preference,
+    save_strategy_preference,
+    initialize_strategy_schema,
+    STRATEGY_PREFERENCES_SCHEMA
+)
 
 # Export all public APIs
 __all__ = [
@@ -30,5 +36,10 @@ __all__ = [
     "select_best_tool",
     # Operation mapper
     "map_feature_to_operations",
-    "OPERATION_RULES"
+    "OPERATION_RULES",
+    # Strategy preferences
+    "get_strategy_preference",
+    "save_strategy_preference",
+    "initialize_strategy_schema",
+    "STRATEGY_PREFERENCES_SCHEMA"
 ]
