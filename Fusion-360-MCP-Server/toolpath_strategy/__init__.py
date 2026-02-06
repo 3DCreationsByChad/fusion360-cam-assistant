@@ -1,0 +1,48 @@
+"""Toolpath strategy rules engine for CNC machining.
+
+This module provides the core intelligence for Phase 4 toolpath suggestions.
+It contains pure-Python modules that encode CNC machining heuristics to map
+detected features to recommended CAM operations with calculated cutting parameters.
+
+No Fusion API dependency - these are testable calculation modules.
+
+Components:
+- material_library: Material property database with SFM and chip load values
+- feeds_speeds: RPM and feed rate calculation from material + tool geometry
+- tool_selector: Tool selection logic with 80% corner radius rule
+- operation_mapper: Feature-to-operation mapping with condition evaluation
+"""
+
+# Core material and feeds/speeds modules (available in Task 1)
+from .material_library import MATERIAL_LIBRARY, get_material_properties
+from .feeds_speeds import calculate_feeds_speeds
+
+# Tool selector and operation mapper (available in Task 2)
+# Using graceful import fallback pattern to allow Task 1 completion
+try:
+    from .tool_selector import select_best_tool
+    TOOL_SELECTOR_AVAILABLE = True
+except ImportError:
+    TOOL_SELECTOR_AVAILABLE = False
+
+try:
+    from .operation_mapper import map_feature_to_operations, OPERATION_RULES
+    OPERATION_MAPPER_AVAILABLE = True
+except ImportError:
+    OPERATION_MAPPER_AVAILABLE = False
+
+# Export all available functions
+__all__ = [
+    # Material library
+    "MATERIAL_LIBRARY",
+    "get_material_properties",
+    # Feeds and speeds
+    "calculate_feeds_speeds",
+]
+
+# Add conditional exports
+if TOOL_SELECTOR_AVAILABLE:
+    __all__.append("select_best_tool")
+
+if OPERATION_MAPPER_AVAILABLE:
+    __all__.extend(["map_feature_to_operations", "OPERATION_RULES"])
