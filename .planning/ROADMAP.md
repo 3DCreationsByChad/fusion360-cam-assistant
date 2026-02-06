@@ -105,35 +105,23 @@ Plans:
 
 ## Phase 5: Learning System
 
-**Goal:** Learn from user choices to improve future suggestions.
+**Goal:** Build a feedback loop that captures user decisions and uses historical patterns to improve future CAM suggestions with exponential decay weighting and interpretable acceptance rates.
 
-### Tasks
+**Status:** PLANNED
 
-1. **Implement `record_user_choice` operation**
-   - Store suggestion given
-   - Store user's actual choice
-   - Track acceptance rate
-   - Optional explicit feedback
+**Plans:** 2 plans
 
-2. **Create `cam_feedback_history` table**
-   - Full history of suggestions
-   - Geometry hash for similarity matching
-   - Timestamps for recency weighting
-
-3. **Preference update logic**
-   - Update confidence scores based on feedback
-   - Weight recent choices higher
-   - Decay old preferences
-
-4. **Integrate learning into suggestions**
-   - Query feedback history for similar geometries
-   - Adjust suggestions based on past choices
-   - Show "from preference" source
+Plans:
+- [ ] 05-01-PLAN.md — Feedback learning module foundation (SQLite storage, recency weighting, confidence adjustment, context matching)
+- [ ] 05-02-PLAN.md — MCP handlers, learning integration into existing operations, and Fusion 360 verification
 
 ### Deliverables
-- `record_user_choice` handler
-- Feedback history table
-- Learning influencing suggestions
+- [ ] `feedback_learning/` module with feedback store, recency weighting, confidence adjuster, and context matcher
+- [ ] `record_user_choice` MCP handler for capturing implicit and explicit feedback
+- [ ] `get_feedback_stats`, `export_feedback_history`, `clear_feedback_history` MCP handlers
+- [ ] Learning integration in `suggest_stock_setup` and `suggest_toolpath_strategy`
+- [ ] Full tool_description documentation for AI client discovery
+- [ ] Human-verified in Fusion 360
 
 ---
 
