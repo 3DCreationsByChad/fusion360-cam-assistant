@@ -58,26 +58,26 @@ Plans:
 
 ---
 
-## Phase 3: Stock Suggestions
+## Phase 3: Stock Suggestions ✓
 
 **Goal:** Suggest stock setup based on geometry analysis with standard size rounding, orientation recommendations, and preference storage with source attribution.
 
-**Status:** PLANNED
+**Status:** COMPLETE (2026-02-05)
 
 **Plans:** 3 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Stock calculation utilities with standard size tables
-- [ ] 03-02-PLAN.md — Cylindrical detection and SQLite preference storage
-- [ ] 03-03-PLAN.md — suggest_stock_setup handler with prompting logic
+- [x] 03-01-PLAN.md — Stock calculation utilities with standard size tables
+- [x] 03-02-PLAN.md — Cylindrical detection and SQLite preference storage
+- [x] 03-03-PLAN.md — suggest_stock_setup handler with prompting logic
 
 ### Deliverables
-- [ ] `stock_suggestions/` module with stock calculator and standard size tables
-- [ ] Cylindrical part detection with trade-off options
-- [ ] SQLite schema (cam_stock_preferences, cam_machine_profiles)
-- [ ] `suggest_stock_setup` handler with preference prompting
-- [ ] Source attribution on all suggestions
-- [ ] Human-verified in Fusion 360
+- [x] `stock_suggestions/` module with stock calculator and standard size tables
+- [x] Cylindrical part detection with trade-off options
+- [x] SQLite schema (cam_stock_preferences, cam_machine_profiles)
+- [x] `suggest_stock_setup` handler with preference prompting
+- [x] Source attribution on all suggestions
+- [x] Human-verified in Fusion 360
 
 ---
 

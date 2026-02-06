@@ -2,16 +2,16 @@
 
 **Last Updated:** 2026-02-05
 **Phase:** 3 - Stock Suggestions
-**Status:** In Progress
+**Status:** Complete
 
 ## Current Position
 
 Phase: 3 of 5 (Stock Suggestions)
-Plan: 02 of 03 in phase
-Status: In progress
-Last activity: 2026-02-05 - Completed 03-02-PLAN.md
+Plan: 03 of 03 in phase
+Status: Complete
+Last activity: 2026-02-05 - Phase 3 verified in Fusion 360
 
-Progress: [######----] 60% (6/10 plans estimated)
+Progress: [########--] 80% (8/10 plans estimated)
 
 ### Phase 3 Progress
 
@@ -19,22 +19,19 @@ Progress: [######----] 60% (6/10 plans estimated)
 |------|------|--------|
 | 03-01 | Stock calculation foundation | Complete |
 | 03-02 | Cylindrical detection and preference store | Complete |
-| 03-03 | MCP tool integration | Pending |
+| 03-03 | MCP tool integration | Complete |
 
-### What Was Delivered (Phase 3 Plan 02)
+### What Was Delivered (Phase 3)
 
-1. **cylindrical_detector.py** with detect_cylindrical_part function (348 lines)
-2. **preference_store.py** with SQLite schema and preference operations (266 lines)
-3. **initialize_schema** creates cam_stock_preferences and cam_machine_profiles tables
-4. **get_preference/save_preference** for material + geometry_type keyed storage
-5. **classify_geometry_type** categorizes by dominant feature type
-6. **Trade-offs dict** for cylindrical parts (rectangular vs round stock options)
+1. **stock_suggestions module** with stock calculator, standard size tables, cylindrical detection, preference store
+2. **suggest_stock_setup MCP operation** — callable via MCP protocol, returns stock dimensions with orientation
+3. **Three interactive response types**: success, preference_needed, orientation_choice_needed
+4. **SQLite preference storage** via cam_stock_preferences and cam_machine_profiles tables
+5. **Deployment junction** from Fusion AppData to git repo for live code updates
 
-### Key Files Created
+### Key Deployment Discovery
 
-- `Fusion-360-MCP-Server/stock_suggestions/cylindrical_detector.py` - Lathe candidate detection (348 lines)
-- `Fusion-360-MCP-Server/stock_suggestions/preference_store.py` - SQLite preference storage (266 lines)
-- `Fusion-360-MCP-Server/stock_suggestions/__init__.py` - Updated module exports
+Fusion 360 loads add-ins from `AppData\Roaming\Autodesk\ApplicationPlugins\`, NOT the git repo. A directory junction now links the two. MCP tool discoverability requires operations to be documented in tool_description — "coming soon" makes operations invisible to AI clients.
 
 ## Accumulated Decisions
 
@@ -59,6 +56,10 @@ Progress: [######----] 60% (6/10 plans estimated)
 | 03-02 | 20% tolerance for cross-section similarity | Dimensions within 20% considered "similar" |
 | 03-02 | 70% threshold for dominant feature type | classify_geometry_type categorization threshold |
 | 03-02 | Lowercase normalization for preference keys | Consistent keying for material + geometry_type |
+| 03-03 | Orientation confidence threshold: 0.70 | Below this, prompt user to choose |
+| 03-03 | Close alternatives threshold: 15% score gap | Surface viable options without noise |
+| 03-03 | Relative imports for add-in package context | Absolute imports fail when loaded via from . import |
+| 03-03 | tool_readme documentation required for discoverability | AI won't call undocumented operations |
 
 ## Lessons Learned
 
@@ -81,16 +82,21 @@ Progress: [######----] 60% (6/10 plans estimated)
 1. **Fusion API coordinates in cm** - Multiply by 10 to convert to mm
 2. **MCP bridge SQLite calls** - Use tool_unlock_token "29e63eb5" for sqlite tool
 3. **Source attribution pattern** - Include "source" key in preference returns for traceability
+4. **MCP tool discoverability is documentation-driven** - "Coming soon" = invisible to AI
+5. **Fusion loads add-ins from AppData, not working directory** - Must deploy or symlink
+6. **Package-relative imports required** - from .module when loaded via from . import
 
 ## Session Continuity
 
-Last session: 2026-02-05T22:49:14Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-02-05
+Stopped at: Phase 3 complete, ready for Phase 4
 Resume file: None
 
 ## Next Steps
 
-Continue Phase 3:
-- **03-03**: MCP tool integration (suggest_stock_setup tool)
+Phase 4: Toolpath Strategy Suggestions
+- suggest_toolpath_strategy handler
+- Rules engine for feature-to-operation mapping
+- Strategy preferences table
 
-Command: `/gsd:execute-phase 3`
+Command: `/gsd:plan-phase 4`

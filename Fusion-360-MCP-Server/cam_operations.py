@@ -30,7 +30,7 @@ except ImportError:
 # Feature detection and geometry analysis modules
 # Provides RecognizedHole/RecognizedPocket wrappers plus orientation analysis
 try:
-    from geometry_analysis import (
+    from .geometry_analysis import (
         FeatureDetector,
         OrientationAnalyzer,
         calculate_minimum_tool_radii
@@ -42,7 +42,7 @@ except ImportError:
 # Stock suggestions module for stock dimension calculation, cylindrical detection,
 # and preference storage via MCP SQLite bridge
 try:
-    from stock_suggestions import (
+    from .stock_suggestions import (
         calculate_stock_dimensions,
         DEFAULT_OFFSETS,
         detect_cylindrical_part,

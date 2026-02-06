@@ -332,7 +332,22 @@ Returns: tools with diameter, flutes, lengths, vendor info.
 }
 Returns: bounding box, volume, features, min radius, orientation suggestions.
 
-### suggest_stock_setup - Get Stock Recommendations (coming soon)
+### suggest_stock_setup - Get Stock Recommendations
+{
+  "operation": "suggest_stock_setup",
+  "body_name": "Part1",
+  "material": "Aluminum",
+  "use_defaults": false,
+  "save_as_preference": false,
+  "custom_offsets": {"xy_mm": 5.0, "z_mm": 3.0},
+  "round_to_standard": true,
+  "selected_orientation": "Z_UP"
+}
+All arguments are optional. Returns one of three response types:
+- "success": Full stock recommendation with stock_dimensions, recommended_shape, orientation, setup_sequence
+- "preference_needed": No stored preference for this material + geometry — includes suggested_defaults
+- "orientation_choice_needed": Multiple valid orientations with low confidence — includes alternatives to choose from
+
 ### suggest_toolpath_strategy - Get Strategy Recommendations (coming soon)
 ### record_user_choice - Store Feedback for Learning (coming soon)
 ### suggest_post_processor - Match Machine to Post (coming soon)
