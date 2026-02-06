@@ -363,7 +363,51 @@ All arguments are optional. Returns per-feature operation recommendations:
 Each suggestion includes recommended_tool, cutting_parameters (RPM, feed rate, stepover, stepdown), and confidence scores.
 The no_features response explains what geometry was found vs what can be detected (simple holes, pockets, slots only).
 
-### record_user_choice - Store Feedback for Learning (coming soon)
+### record_user_choice - Store Feedback for Learning
+{
+  "operation": "record_user_choice",
+  "operation_type": "stock_setup",
+  "material": "Aluminum",
+  "suggestion": {"stock_dimensions": {...}, "confidence_score": 0.85},
+  "user_choice": {"stock_dimensions": {...}},
+  "feedback_type": "implicit",
+  "note": "Preferred larger stock for this material"
+}
+Records when user accepts or overrides a suggestion. Required: operation_type, material, suggestion.
+- operation_type: 'stock_setup', 'toolpath_strategy', or 'tool_selection'
+- suggestion: The full JSON suggestion that was presented
+- user_choice: What user selected instead (omit if accepted suggestion as-is)
+- feedback_type: 'implicit' (auto-detected), 'explicit_good', or 'explicit_bad'
+- geometry_type: Auto-detected from body_name if not provided
+- note: Optional reason for override
+The system learns from these events and adjusts future suggestion confidence scores.
+
+### get_feedback_stats - View Learning Statistics
+{
+  "operation": "get_feedback_stats",
+  "operation_type": "stock_setup"
+}
+Returns acceptance rates broken down by operation type, material, and geometry type.
+Optional operation_type filter. Shows overall acceptance rate and per-category breakdowns.
+
+### export_feedback_history - Export Feedback Data
+{
+  "operation": "export_feedback_history",
+  "format": "json",
+  "operation_type": "toolpath_strategy"
+}
+Exports all feedback history as CSV or JSON. Optional operation_type filter.
+format: 'csv' or 'json' (default: 'json')
+
+### clear_feedback_history - Reset Learning Data
+{
+  "operation": "clear_feedback_history",
+  "operation_type": "stock_setup",
+  "confirm": true
+}
+Clears feedback history for a specific operation type or all. Requires confirm=true.
+Omit operation_type to clear all feedback. Per-category reset supported.
+
 ### suggest_post_processor - Match Machine to Post (coming soon)
 
 ## Note
@@ -496,7 +540,9 @@ The add-in maintains a session context for stored objects across multiple calls.
       # CAM-specific operations (routed to cam_operations module)
       elif operation in ['get_cam_state', 'get_tool_library', 'analyze_geometry_for_cam',
                          'suggest_stock_setup', 'suggest_toolpath_strategy',
-                         'record_user_choice', 'suggest_post_processor']:
+                         'record_user_choice', 'get_feedback_stats',
+                         'export_feedback_history', 'clear_feedback_history',
+                         'suggest_post_processor']:
         return cam_operations.route_cam_operation(operation, arguments)
 
       # Default: Generic API call (backward compatible - no operation specified)
