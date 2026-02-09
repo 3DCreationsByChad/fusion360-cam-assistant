@@ -1534,6 +1534,7 @@ def handle_suggest_toolpath_strategy(arguments: dict) -> dict:
 
         # Build feature list with priority ordering
         features_by_priority = []
+        all_features = []
 
         # Add features in priority order: holes (drilling) first, then pockets, then slots
         if recognized_features.get('holes'):
@@ -1541,18 +1542,24 @@ def handle_suggest_toolpath_strategy(arguments: dict) -> dict:
                 hole['type'] = 'hole'
                 hole['priority'] = 1  # Drilling first
                 features_by_priority.append(hole)
+                all_features.append(hole)
 
         if recognized_features.get('pockets'):
             for pocket in recognized_features['pockets']:
                 pocket['type'] = 'pocket'
                 pocket['priority'] = 2  # Roughing second
                 features_by_priority.append(pocket)
+                all_features.append(pocket)
 
         if recognized_features.get('slots'):
             for slot in recognized_features['slots']:
                 slot['type'] = 'slot'
                 slot['priority'] = 2  # Roughing second (same as pockets)
                 features_by_priority.append(slot)
+                all_features.append(slot)
+
+        # Classify geometry type for learning context
+        geometry_type = classify_geometry_type(all_features)
 
         # If no features detected
         if not features_by_priority:
