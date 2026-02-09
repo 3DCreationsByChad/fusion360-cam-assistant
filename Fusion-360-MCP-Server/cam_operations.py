@@ -1981,6 +1981,7 @@ def handle_record_user_choice(arguments: dict) -> dict:
             operation_type=operation_type,
             material=material,
             geometry_type=geometry_type,
+            context=context,
             suggestion=suggestion,
             user_choice=user_choice,
             feedback_type=feedback_type,
