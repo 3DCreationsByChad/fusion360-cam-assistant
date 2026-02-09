@@ -560,6 +560,9 @@ The add-in maintains a session context for stored objects across multiple calls.
                 log(f"[MCP_CALL] Tool: {tool_name}, Result keys: {list(result.keys()) if isinstance(result, dict) else type(result).__name__}", adsk.core.LogLevels.WarningLogLevel)
             except:
                 pass
+            # Unwrap JSON-RPC response: {'jsonrpc': '2.0', 'result': {...}} -> {...}
+            if isinstance(result, dict) and 'result' in result:
+                result = result['result']
             return result
         arguments['_mcp_call_func'] = mcp_call_wrapper
         return cam_operations.route_cam_operation(operation, arguments)
@@ -1724,6 +1727,7 @@ def _auto_connect():
 
 def start():
   """Initialize MCP integration when add-in starts."""
+  ui.messageBox("MCP-Link add-in is starting!")
   log("MCP Integration starting...")
   
   # Set up thread-safe API processor FIRST
