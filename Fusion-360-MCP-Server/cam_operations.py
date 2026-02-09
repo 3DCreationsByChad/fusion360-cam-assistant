@@ -1977,7 +1977,7 @@ def handle_record_user_choice(arguments: dict) -> dict:
         initialize_feedback_schema(mcp_call_func)
 
         # Record feedback
-        record_feedback(
+        success = record_feedback(
             operation_type=operation_type,
             material=material,
             geometry_type=geometry_type,
@@ -1988,6 +1988,13 @@ def handle_record_user_choice(arguments: dict) -> dict:
             note=note,
             mcp_call_func=mcp_call_func
         )
+        
+        # Check if recording succeeded
+        if not success:
+            return _format_error(
+                "Failed to record feedback to database",
+                "SQLite insert may have failed - check database connection and schema"
+            )
 
         # Build response
         response = {

@@ -502,6 +502,14 @@ The add-in maintains a session context for stored objects across multiple calls.
       params = call_data.get('params', {})
       arguments = params.get('arguments', {})
       
+      # FIX: Remote tool sends data in 'input', not 'arguments'
+      if 'input' in arguments:
+        arguments = arguments['input']
+      
+      # FIX: Remote tool may send operation inside 'parameters'
+      if 'parameters' in arguments and 'operation' in arguments['parameters']:
+        arguments.update(arguments['parameters'])
+      
       # Check for operation type (new multi-operation support)
       operation = arguments.get('operation')
       
@@ -543,6 +551,17 @@ The add-in maintains a session context for stored objects across multiple calls.
                          'record_user_choice', 'get_feedback_stats',
                          'export_feedback_history', 'clear_feedback_history',
                          'suggest_post_processor']:
+        # Inject MCP call function for SQLite bridge access
+        def mcp_call_wrapper(tool_name, tool_args):
+            import json
+            result = mcp_client_instance.call_mcp_tool(tool_name, tool_args)
+            # Log for debugging
+            try:
+                log(f"[MCP_CALL] Tool: {tool_name}, Result keys: {list(result.keys()) if isinstance(result, dict) else type(result).__name__}", adsk.core.LogLevels.WarningLogLevel)
+            except:
+                pass
+            return result
+        arguments['_mcp_call_func'] = mcp_call_wrapper
         return cam_operations.route_cam_operation(operation, arguments)
 
       # Default: Generic API call (backward compatible - no operation specified)
