@@ -1,17 +1,17 @@
 # Project State
 
-**Last Updated:** 2026-02-06
+**Last Updated:** 2026-02-09
 **Phase:** 5 - Learning System
-**Status:** In Progress
+**Status:** Complete
 
 ## Current Position
 
 Phase: 5 of 5 (Learning System)
-Plan: 01 of 02 in phase
-Status: Plan 01 complete
-Last activity: 2026-02-06 - Completed 05-01-PLAN.md (feedback learning foundation)
+Plan: 02 of 02 in phase
+Status: Phase complete
+Last activity: 2026-02-09 - Completed 05-02-PLAN.md (feedback MCP handlers)
 
-Progress: [###########] 92% (11/12 plans estimated)
+Progress: [############] 100% (12/12 plans complete)
 
 ### Phase 4 Progress
 
@@ -25,7 +25,7 @@ Progress: [###########] 92% (11/12 plans estimated)
 | Plan | Name | Status |
 |------|------|--------|
 | 05-01 | Feedback learning foundation | Complete |
-| 05-02 | Feedback MCP handlers | Pending |
+| 05-02 | Feedback MCP handlers | Complete |
 
 ### What Was Delivered (Phase 4)
 
@@ -43,7 +43,7 @@ Progress: [###########] 92% (11/12 plans estimated)
 4. **Tool_description documentation** enabling AI client discovery of suggest_toolpath_strategy
 5. **Three response statuses** (success, no_features, no_tool_available) with graceful error handling
 
-### What Was Delivered (Phase 5 - In Progress)
+### What Was Delivered (Phase 5 - Complete)
 
 **Plan 01 - Feedback learning foundation:**
 1. **feedback_learning module** with SQLite storage, recency weighting, confidence adjustment, and context matching
@@ -51,6 +51,13 @@ Progress: [###########] 92% (11/12 plans estimated)
 3. **Exponential decay recency weighting** using W = e^(-lambda*t) with 30-day halflife default
 4. **Confidence adjustment** requiring 3+ samples, 0.20 floor, linear blend to 10 samples, 0.60 tentative threshold
 5. **Material family matching** with LIKE queries for cross-material learning
+
+**Plan 02 - Feedback MCP handlers:**
+1. **Four new MCP operations** (record_user_choice, get_feedback_stats, export_feedback_history, clear_feedback_history)
+2. **Learning integration** in suggest_stock_setup and suggest_toolpath_strategy with non-breaking try/except wrappers
+3. **Auto-detection** of geometry_type from body_name and feedback_type from user_choice presence
+4. **tool_description documentation** for all four operations enabling AI client discovery
+5. **Source attribution** showing default vs user_preference vs user_preference_tentative
 
 ## Accumulated Decisions
 
@@ -98,6 +105,9 @@ Progress: [###########] 92% (11/12 plans estimated)
 | 05-01 | TENTATIVE_THRESHOLD = 0.60 | Flag suggestions below this for user awareness |
 | 05-01 | Material family matching with LIKE | Enables cross-material learning (e.g., "6061 aluminum" → "aluminum") |
 | 05-01 | Pure Python for recency/confidence modules | No MCP/Fusion dependencies → easily unit testable |
+| 05-02 | Geometry type auto-detection priority | Try geometry_type arg first, fall back to body_name + analyze_geometry_for_cam |
+| 05-02 | Learning is non-critical | Wrap all learning calls in try/except to never break suggestions |
+| 05-02 | First-time learning notification threshold | Use should_notify_learning() to show message when 3rd sample kicks in |
 
 ## Lessons Learned
 
@@ -139,19 +149,26 @@ Progress: [###########] 92% (11/12 plans estimated)
 4. **UTC-aware datetime handling** - datetime.now(timezone.utc) prevents timezone bugs
 5. **JSON serialization consistency** - json.dumps(obj, sort_keys=True) for stable keying in conflict detection
 6. **Separate CREATE INDEX statements** - SQLite doesn't support inline INDEX in CREATE TABLE
+7. **Check prior commits before starting execution** - Most work was already done in commits e3980e2 and 53fd1e6
+8. **Variable scope matters** - geometry_type referenced but not defined in handle_suggest_toolpath_strategy was a blocker
+9. **Non-breaking integration pattern** - try/except + AVAILABLE flag ensures robustness
+10. **Auto-detection reduces friction** - geometry_type from body_name eliminates user burden
 
 ## Session Continuity
 
-Last session: 2026-02-06
-Stopped at: Completed 05-01-PLAN.md (feedback learning foundation)
+Last session: 2026-02-09
+Stopped at: Completed 05-02-PLAN.md (feedback MCP handlers)
 Resume file: None
 
 ## Next Steps
 
-Phase 5 Plan 02: Feedback MCP Handlers
-- record_user_choice MCP operation for capturing user corrections
-- Integration of feedback learning into existing MCP operations (stock_setup, toolpath_strategy)
-- initialize_feedback_schema() call on add-in startup
-- Tool_description updates for record_user_choice discoverability
+**Phase 5 is complete!** All planned features delivered:
+- Feedback learning foundation (05-01)
+- MCP integration and handlers (05-02)
 
-Command: `/gsd:plan 05-02` to plan Plan 02
+**Potential future work:**
+- Tool selection learning (similar pattern to stock_setup/toolpath_strategy)
+- Post-processor matching (Phase 6+)
+- Performance optimization if feedback history grows large
+
+**Ready for production use** - System learns silently in background while maintaining backward compatibility
