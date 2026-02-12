@@ -178,6 +178,11 @@ async function sendToServer(method, params) {
   log(`Request body: ${body.substring(0, 200)}...`);
 
   return new Promise((resolve, reject) => {
+    // Store resolver BEFORE posting so we catch fast SSE responses
+    pendingRequests.set(requestId, resolve);
+    log(`Added to pending requests: ${requestId}`);
+    log(`Pending requests count: ${pendingRequests.size}`);
+
     const options = {
       hostname: serverUrl.hostname,
       port: serverUrl.port,
@@ -195,14 +200,12 @@ async function sendToServer(method, params) {
       log(`POST response status: ${res.statusCode}`);
       // Accept both 200 (OK) and 202 (Accepted) as valid responses
       if (res.statusCode !== 200 && res.statusCode !== 202) {
+        pendingRequests.delete(requestId); // Clean up on error
         reject(new Error(`HTTP ${res.statusCode}`));
         return;
       }
 
-      // Store resolver for when response comes via SSE
-      pendingRequests.set(requestId, resolve);
       log(`Waiting for response via SSE for request ID: ${requestId}`);
-      log(`Pending requests count: ${pendingRequests.size}`);
 
       // Timeout after 30 seconds
       setTimeout(() => {
