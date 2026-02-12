@@ -97,8 +97,10 @@ async function connectSSE() {
               log(`Message endpoint: ${messageEndpoint}`);
             } else {
               // Handle JSON messages
+              log(`SSE data received: ${data.substring(0, 200)}...`);
               try {
                 const json = JSON.parse(data);
+                log(`Parsed SSE JSON, has id: ${!!json.id}, id value: ${json.id}`);
 
                 // Handle reverse calls
                 if (json.reverse) {
@@ -108,12 +110,16 @@ async function connectSSE() {
 
                 // Handle responses to our requests
                 if (json.id && pendingRequests.has(json.id)) {
+                  log(`Found pending request for id: ${json.id}`);
                   const resolver = pendingRequests.get(json.id);
                   pendingRequests.delete(json.id);
                   resolver(json);
+                } else if (json.id) {
+                  log(`Received response for unknown request id: ${json.id}`);
+                  log(`Pending requests: ${Array.from(pendingRequests.keys()).join(', ')}`);
                 }
               } catch (e) {
-                // Not JSON, ignore
+                log(`Failed to parse SSE data as JSON: ${e.message}`);
               }
             }
           }
