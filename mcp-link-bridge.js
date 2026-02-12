@@ -178,7 +178,8 @@ async function sendToServer(method, params) {
 
     const client = isHttps ? https : http;
     const req = client.request(options, (res) => {
-      if (res.statusCode !== 202) {
+      // Accept both 200 (OK) and 202 (Accepted) as valid responses
+      if (res.statusCode !== 200 && res.statusCode !== 202) {
         reject(new Error(`HTTP ${res.statusCode}`));
         return;
       }
