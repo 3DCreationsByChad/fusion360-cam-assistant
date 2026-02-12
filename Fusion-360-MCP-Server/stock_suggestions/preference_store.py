@@ -49,8 +49,11 @@ CREATE TABLE IF NOT EXISTS cam_machine_profiles (
 );
 """
 
-# MCP bridge SQLite tool unlock token (from mcp_bridge.py docs)
-SQLITE_TOOL_UNLOCK_TOKEN = "29e63eb5"
+# MCP bridge SQLite tool unlock token (from sqlite MCP server docs)
+SQLITE_TOOL_UNLOCK_TOKEN = "8d8f7853"
+
+# Persistent database file for CAM preferences
+CAM_PREFERENCES_DATABASE = "@user_data/cam_preferences.db"
 
 
 # =============================================================================
@@ -78,6 +81,7 @@ def initialize_schema(mcp_call_func: Callable) -> bool:
         # Create stock preferences table
         result1 = mcp_call_func("sqlite", {
             "input": {
+                "database": CAM_PREFERENCES_DATABASE,
                 "sql": STOCK_PREFERENCES_SCHEMA,
                 "params": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
@@ -87,6 +91,7 @@ def initialize_schema(mcp_call_func: Callable) -> bool:
         # Create machine profiles table
         result2 = mcp_call_func("sqlite", {
             "input": {
+                "database": CAM_PREFERENCES_DATABASE,
                 "sql": MACHINE_PROFILES_SCHEMA,
                 "params": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
@@ -143,6 +148,7 @@ def get_preference(
     try:
         result = mcp_call_func("sqlite", {
             "input": {
+                "database": CAM_PREFERENCES_DATABASE,
                 "sql": """
                     SELECT offsets_xy_mm, offsets_z_mm, preferred_orientation,
                            stock_shape, machining_allowance_mm
@@ -231,6 +237,7 @@ def save_preference(
     try:
         result = mcp_call_func("sqlite", {
             "input": {
+                "database": CAM_PREFERENCES_DATABASE,
                 "sql": """
                     INSERT OR REPLACE INTO cam_stock_preferences
                     (material, geometry_type, offsets_xy_mm, offsets_z_mm,

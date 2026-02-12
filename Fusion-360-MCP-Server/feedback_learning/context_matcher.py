@@ -18,8 +18,11 @@ from typing import List, Dict, Any, Optional, Callable
 import json
 
 
-# MCP bridge SQLite tool unlock token (from mcp_bridge.py docs)
-SQLITE_TOOL_UNLOCK_TOKEN = "29e63eb5"
+# MCP bridge SQLite tool unlock token (from sqlite MCP server docs)
+SQLITE_TOOL_UNLOCK_TOKEN = "8d8f7853"
+
+# Import database constant from feedback_store
+from .feedback_store import CAM_FEEDBACK_DATABASE
 
 
 # =============================================================================
@@ -68,6 +71,7 @@ def get_matching_feedback(
         # Query matching feedback with LIKE for material family matching
         result = mcp_call_func("sqlite", {
             "input": {
+                "database": CAM_FEEDBACK_DATABASE,
                 "sql": """
                     SELECT id, operation_type, material, geometry_type,
                            context_snapshot, suggestion_payload, user_choice,

@@ -34,8 +34,11 @@ CREATE TABLE IF NOT EXISTS cam_strategy_preferences (
 );
 """
 
-# MCP bridge SQLite tool unlock token (from mcp_bridge.py docs)
-SQLITE_TOOL_UNLOCK_TOKEN = "29e63eb5"
+# MCP bridge SQLite tool unlock token (from sqlite MCP server docs)
+SQLITE_TOOL_UNLOCK_TOKEN = "8d8f7853"
+
+# Persistent database file for CAM strategy preferences
+CAM_STRATEGY_DATABASE = "@user_data/cam_strategy_preferences.db"
 
 
 # =============================================================================
@@ -62,6 +65,7 @@ def initialize_strategy_schema(mcp_call_func: Callable) -> bool:
     try:
         result = mcp_call_func("sqlite", {
             "input": {
+                "database": CAM_STRATEGY_DATABASE,
                 "sql": STRATEGY_PREFERENCES_SCHEMA,
                 "params": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
@@ -115,6 +119,7 @@ def get_strategy_preference(
     try:
         result = mcp_call_func("sqlite", {
             "input": {
+                "database": CAM_STRATEGY_DATABASE,
                 "sql": """
                     SELECT preferred_roughing_op, preferred_finishing_op,
                            preferred_tool_diameter_mm, confidence_score
@@ -210,6 +215,7 @@ def save_strategy_preference(
 
         result = mcp_call_func("sqlite", {
             "input": {
+                "database": CAM_STRATEGY_DATABASE,
                 "sql": """
                     INSERT OR REPLACE INTO cam_strategy_preferences
                     (material, feature_type, preferred_roughing_op, preferred_finishing_op,
