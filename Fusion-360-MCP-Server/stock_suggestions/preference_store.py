@@ -258,10 +258,16 @@ def save_preference(
             }
         })
 
+        # DEBUG: Log what we actually got back
+        import json
+        print(f"[PREFERENCE_STORE DEBUG] save_preference result: {json.dumps(result, indent=2)}")
+
         # Check for errors
         if result and isinstance(result, dict) and result.get("error"):
+            print(f"[PREFERENCE_STORE DEBUG] Error detected: {result.get('error')}")
             return False
 
+        print("[PREFERENCE_STORE DEBUG] All checks passed - returning True")
         return True
 
     except Exception:
