@@ -4,6 +4,11 @@
 
 import os
 
+# DIAGNOSTIC: This message confirms our modified code is loaded
+print("=" * 70)
+print("🔧 LOADING CONFIG.PY - CODE CHANGES ACTIVE")
+print("=" * 70)
+
 # Flag that indicates to run in Debug mode or not. When running in Debug mode
 # more information is written to the Text Command window. Generally, it's useful
 # to set this to True while developing an add-in and set it to False when you
@@ -34,3 +39,9 @@ sample_palette_id = f'{COMPANY_NAME}_{ADDIN_NAME}_palette_id'
 # MCP Configuration
 MCP_TOOL_NAME = 'fusion360'
 MCP_TOOL_DESCRIPTION = 'Autodesk Fusion - AI-powered CAD/CAM/CAE software for product design and manufacturing'
+
+# Direct connection mode - bypass broken native binary
+# Set to True to skip native messaging discovery and connect directly
+MCP_DIRECT_CONNECT = True
+MCP_DIRECT_SERVER_URL = 'https://127-0-0-1.local.aurafriday.com:31173/sse'
+MCP_DIRECT_AUTH_TOKEN = 'Bearer 1816a663-12dd-4868-9658-e0bd65154d9e'

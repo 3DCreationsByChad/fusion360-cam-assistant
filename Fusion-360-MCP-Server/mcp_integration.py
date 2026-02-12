@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 File: mcp_integration.py
 Project: MCP-Link Fusion 360 Add-in
@@ -1725,11 +1726,53 @@ def _auto_connect():
     mcp_client_instance = None
 
 
+def diagnose_auth():
+  """
+  Run auth diagnostics and log the report.
+
+  This helps troubleshoot connection issues by checking:
+  - MCP-Link installation
+  - Native binary token
+  - Token matching
+  """
+  try:
+    from .lib import auth_diagnostics
+
+    # Always log diagnostics (ignore MCP_DEBUG setting)
+    futil.log("=" * 60)
+    futil.log("Running MCP Auth Diagnostics...")
+    futil.log("=" * 60)
+
+    report = auth_diagnostics.diagnose_auth()
+    formatted = auth_diagnostics.format_report(report)
+
+    # Log the report (always visible)
+    for line in formatted.split('\n'):
+      if line.strip():
+        futil.log(line)
+
+    # Show popup with key findings
+    if report["status"] == "ok":
+      ui.messageBox("✅ Auth tokens match!\n\nConnection should work.\n\nCheck Text Commands for details.", "Auth Diagnostics")
+    elif report["status"] == "warning":
+      ui.messageBox("⚠️ Token mismatch detected!\n\n" + report["recommendation"], "Auth Diagnostics", adsk.core.MessageBoxButtonTypes.OKButtonType, adsk.core.MessageBoxIconTypes.WarningIconType)
+    else:
+      ui.messageBox("❌ Auth error!\n\n" + report["recommendation"], "Auth Diagnostics", adsk.core.MessageBoxButtonTypes.OKButtonType, adsk.core.MessageBoxIconTypes.CriticalIconType)
+
+    return report
+
+  except Exception as e:
+    futil.log(f"ERROR running auth diagnostics: {e}", adsk.core.LogLevels.ErrorLogLevel)
+    import traceback
+    futil.log(traceback.format_exc(), adsk.core.LogLevels.ErrorLogLevel)
+    return None
+
+
 def start():
   """Initialize MCP integration when add-in starts."""
   ui.messageBox("MCP-Link add-in is starting!")
   log("MCP Integration starting...")
-  
+
   # Set up thread-safe API processor FIRST
   try:
     _setup_fusion_api_processor()
@@ -1738,7 +1781,11 @@ def start():
     import traceback
     log(traceback.format_exc(), adsk.core.LogLevels.ErrorLogLevel)
     return
-  
+
+  # Run auth diagnostics before attempting connection
+  log("Running auth diagnostics...")
+  diagnose_auth()
+
   # Auto-connect to MCP server (no UI button - this is infrastructure)
   if config.MCP_AUTO_CONNECT:
     try:
@@ -1751,7 +1798,7 @@ def start():
   else:
     log("MCP_AUTO_CONNECT is False - MCP integration disabled")
     log("Set MCP_AUTO_CONNECT = True in config.py to enable")
-  
+
   # Flush initial logs
   _flush_log_buffer()
 

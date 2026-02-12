@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "mcp-link": {
+      "command": "node",
+      "args": ["mcp-link-bridge.js"],
+      "disabled": false,
+      "alwaysAllow": []
+    }
+  }
+}

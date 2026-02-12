@@ -65,16 +65,28 @@ def _check_and_apply_updates():
 def run(context):
   """
   Main entry point - Fusion calls this when the add-in starts.
-  
+
   Flow:
   1. Check for pending updates (before importing anything else)
   2. Apply updates if found (safe because no modules loaded yet)
   3. Import and run the actual add-in logic
   """
+  # DIAGNOSTIC: Write to file to confirm run() was called
+  try:
+    import os
+    log_path = os.path.join(os.path.dirname(__file__), 'startup_log.txt')
+    with open(log_path, 'a') as f:
+      import datetime
+      f.write(f"\n{'='*60}\n")
+      f.write(f"{datetime.datetime.now()}: run() called\n")
+      f.write(f"{'='*60}\n")
+  except Exception as e:
+    _safe_print(f"[DEBUG] Log write failed: {e}")
+
   # Step 1: Check for and apply any pending updates FIRST
   # This happens BEFORE importing mcp_main, so file overwrites are safe
   _check_and_apply_updates()
-  
+
   # Step 2: Now import and run the actual add-in
   # If an update was applied, we load the NEW code
   try:
@@ -83,7 +95,16 @@ def run(context):
   except Exception as e:
     _safe_print(f"[MCP-Link] Failed to start add-in: {e}")
     import traceback
-    _safe_print(traceback.format_exc())
+    error_msg = traceback.format_exc()
+    _safe_print(error_msg)
+    # Write error to file
+    try:
+      import os
+      log_path = os.path.join(os.path.dirname(__file__), 'startup_log.txt')
+      with open(log_path, 'a') as f:
+        f.write(f"ERROR:\n{error_msg}\n")
+    except:
+      pass
 
 
 def stop(context):

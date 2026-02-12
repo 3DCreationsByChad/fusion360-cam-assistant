@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 File: mcp_client.py
 Project: MCP-Link Fusion Add-in
@@ -169,7 +170,7 @@ class MCPClient:
   def _attempt_connection(self) -> bool:
     """
     Attempt a single connection to the MCP server.
-    
+
     Returns:
       True if connected and registered successfully, False otherwise
     """
@@ -177,60 +178,118 @@ class MCPClient:
       self.log("="*60, force=True)
       self.log("MCP Client Connection Attempt", force=True)
       self.log("="*60, force=True)
-      
+
+      # Check for direct connection mode (bypass broken native binary)
+      try:
+        from .. import config
+        if hasattr(config, 'MCP_DIRECT_CONNECT') and config.MCP_DIRECT_CONNECT:
+          self.log("🔧 DIRECT CONNECTION MODE ENABLED", force=True)
+          self.log("Skipping native binary discovery (using config values)", force=True)
+
+          self.server_url = config.MCP_DIRECT_SERVER_URL
+          self.auth_header = config.MCP_DIRECT_AUTH_TOKEN
+
+          self.log(f"[OK] Server URL: {self.server_url}", force=True)
+          self.log(f"[OK] Auth token: {self.auth_header[:50]}...", force=True)
+
+          # Skip to Step 5: Connect to SSE endpoint
+          self.log("Step 5: Connecting to SSE endpoint...")
+          self.sse_connection = self._connect_sse(self.server_url, self.auth_header)
+
+          if not self.sse_connection:
+            self.log("ERROR: Could not connect to SSE endpoint", force=True)
+            return False
+
+          self.log(f"[OK] SSE Connected! Session ID: {self.sse_connection['session_id']}")
+
+          # Step 6: Check for remote tool
+          self.log("Step 6: Checking for remote tool...")
+          tools_response = self._send_request("tools/list", {})
+
+          if not tools_response:
+            self.log("ERROR: Could not get tools list", force=True)
+            return False
+
+          tools = tools_response.get('result', {}).get('tools', [])
+          has_remote = any(tool.get('name') == 'remote' for tool in tools)
+
+          if not has_remote:
+            self.log("ERROR: Server does not have 'remote' tool", force=True)
+            return False
+
+          self.log("[OK] Remote tool found")
+
+          # Step 7: Register our tool
+          self.log(f"Step 7: Registering {self.tool_name} with MCP server...")
+          if not self._register_tool():
+            self.log("ERROR: Failed to register tool", force=True)
+            return False
+
+          self.is_connected = True
+          self.log("="*60, force=True)
+          self.log(f"[SUCCESS] {self.tool_name} registered successfully!", force=True)
+          self.log("Listening for reverse tool calls...", force=True)
+          self.log("="*60, force=True)
+
+          return True
+      except Exception as e:
+        self.log(f"Direct connect check failed: {e}", force=True)
+        # Fall through to normal discovery
+
+      # Normal discovery flow (if direct connect not enabled or failed)
       # Step 1: Find the native messaging manifest
       self.log("Step 1: Finding native messaging manifest...")
       manifest_path = self._find_native_messaging_manifest()
-      
+
       if not manifest_path:
         self.log("ERROR: Could not find native messaging manifest", force=True)
         self.log("Expected locations:", force=True)
         self.log("  Windows: %LOCALAPPDATA%\\AuraFriday\\com.aurafriday.shim.json", force=True)
         return False
-      
+
       self.log(f"[OK] Found manifest: {manifest_path}")
-      
+
       # Step 2: Read the manifest
       self.log("Step 2: Reading manifest...")
       manifest = self._read_manifest(manifest_path)
       if not manifest:
         self.log("ERROR: Could not read manifest", force=True)
         return False
-      
+
       self.log("[OK] Manifest loaded")
-      
+
       # Step 3: Run the native binary to get server config
       self.log("Step 3: Discovering MCP server endpoint...")
       config_json = self._discover_server_endpoint(manifest)
-      
+
       if not config_json:
         self.log("ERROR: Could not get configuration from native binary", force=True)
         self.log("Is the Aura Friday MCP server running?", force=True)
         return False
-      
+
       self.log("[OK] Server configuration received")
-      
+
       # Step 4: Extract server URL and auth header
       self.log("Step 4: Extracting server URL and auth...")
       self.server_url = self._extract_server_url(config_json)
       if not self.server_url:
         self.log("ERROR: Could not extract server URL", force=True)
         return False
-      
+
       mcp_servers = config_json.get('mcpServers', {})
       if mcp_servers:
         first_server = next(iter(mcp_servers.values()), None)
         if first_server and 'headers' in first_server:
           self.auth_header = first_server['headers'].get('Authorization')
-      
+
       # WORKAROUND: Native binary returns invalid token, use hardcoded valid token
       self.auth_header = "Bearer 1816a663-12dd-4868-9658-e0bd65154d9e"
       self.log("[WORKAROUND] Using hardcoded valid token", force=True)
-      
+
       if not self.auth_header:
         self.log("ERROR: No authorization header found", force=True)
         return False
-      
+
       self.log(f"[OK] Server URL: {self.server_url}")
       
       # Step 5: Connect to SSE endpoint
@@ -629,25 +688,34 @@ class MCPClient:
       
       session_id = None
       message_endpoint = None
-      
+
       event_type = None
-      for _ in range(10):
+      self.log("[DEBUG] Reading SSE stream for endpoint event...", force=True)
+      for i in range(10):
         line = response.readline().decode('utf-8').strip()
-        
+        self.log(f"[DEBUG] SSE line {i}: {repr(line)[:100]}", force=True)
+
         if line.startswith('event:'):
           event_type = line.split(':', 1)[1].strip()
+          self.log(f"[DEBUG] Got event type: {event_type}", force=True)
         elif line.startswith('data:'):
           data = line.split(':', 1)[1].strip()
+          self.log(f"[DEBUG] Got data: {data[:100]}...", force=True)
           if event_type == 'endpoint':
             message_endpoint = data
+            self.log(f"[DEBUG] Found endpoint data: {message_endpoint}", force=True)
             if 'session_id=' in message_endpoint:
               session_id = message_endpoint.split('session_id=')[1].split('&')[0]
+              self.log(f"[DEBUG] Extracted session_id: {session_id}", force=True)
             break
         elif line == '':
           if message_endpoint:
             break
-      
+
+      self.log(f"[DEBUG] After reading SSE: session_id={session_id}, message_endpoint={message_endpoint}", force=True)
+
       if not message_endpoint or not session_id:
+        self.log("[ERROR] Did not receive session_id and message_endpoint from SSE stream", force=True)
         conn.close()
         return None
       

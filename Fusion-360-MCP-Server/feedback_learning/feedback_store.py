@@ -120,7 +120,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
                 "bindings": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         # Create indexes
         result2 = _unwrap_mcp_result(mcp_call_func("sqlite", {
@@ -130,7 +130,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
                 "bindings": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         result3 = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
@@ -139,7 +139,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
                 "bindings": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         result4 = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
@@ -148,7 +148,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
                 "bindings": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         # Check for errors in results
         for result in [result1, result2, result3, result4]:
@@ -244,7 +244,7 @@ def record_feedback(
                 ],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         # Check for errors - comprehensive check
         if not result:
@@ -313,7 +313,7 @@ def get_feedback_statistics(
                 "bindings": params,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         overall = {"total_count": 0, "accept_count": 0, "acceptance_rate": 0.0}
         if overall_result and isinstance(overall_result, dict):
@@ -351,7 +351,7 @@ def get_feedback_statistics(
                 "bindings": params,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         by_material = []
         if material_result and isinstance(material_result, dict):
@@ -389,7 +389,7 @@ def get_feedback_statistics(
                 "bindings": params,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         by_geometry_type = []
         if geometry_result and isinstance(geometry_result, dict):
@@ -428,7 +428,7 @@ def get_feedback_statistics(
                     "bindings": [],
                     "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
                 }
-            })
+            }))
 
             if operation_result and isinstance(operation_result, dict):
                 rows = operation_result.get("rows") or operation_result.get("data") or operation_result.get("result")
@@ -511,7 +511,7 @@ def export_feedback_history(
                 "bindings": params,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         rows = []
         if result and isinstance(result, dict):
@@ -607,7 +607,7 @@ def clear_feedback_history(
                 "bindings": params,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         # Get row count (SQLite doesn't return affected rows in standard way)
         # Query to count remaining rows
@@ -618,7 +618,7 @@ def clear_feedback_history(
                 "bindings": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         # For simplicity, return success indicator
         # In production, could query before/after to get exact count
