@@ -247,21 +247,24 @@ def record_feedback(
         }))
 
         # DEBUG: Log what we actually got back
-        import json
         print(f"[FEEDBACK_STORE DEBUG] record_feedback result: {json.dumps(result, indent=2)}")
 
-        # Check for errors - comprehensive check
+        # Check for errors - check actual MCP sqlite tool response structure
         if not result:
             print("[FEEDBACK_STORE DEBUG] Result is None/empty - returning False")
             return False
         if isinstance(result, dict):
-            # Check for error field
-            if result.get("error") or result.get("error_message_if_operation_failed"):
-                print(f"[FEEDBACK_STORE DEBUG] Error detected: {result.get('error') or result.get('error_message_if_operation_failed')}")
+            # Check for isError flag (MCP sqlite tool sets this)
+            if result.get("isError") == True:
+                print(f"[FEEDBACK_STORE DEBUG] isError=true detected: {result.get('error_message_if_operation_failed')}")
                 return False
-            # Check for success
+            # Check operation_was_successful flag
             if result.get("operation_was_successful") == False:
-                print("[FEEDBACK_STORE DEBUG] operation_was_successful is False")
+                print(f"[FEEDBACK_STORE DEBUG] operation_was_successful=false: {result.get('error_message_if_operation_failed')}")
+                return False
+            # Check for error field
+            if result.get("error"):
+                print(f"[FEEDBACK_STORE DEBUG] Error field detected: {result.get('error')}")
                 return False
 
         print("[FEEDBACK_STORE DEBUG] All checks passed - returning True")

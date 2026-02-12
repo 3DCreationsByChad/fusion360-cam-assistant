@@ -10,6 +10,7 @@ Per CONTEXT.md:
 - Full preference profile includes: offsets, preferred_orientation, stock_shape, machining_allowance
 """
 
+import json
 from typing import Dict, Any, Optional, List, Callable
 
 
@@ -259,13 +260,25 @@ def save_preference(
         })
 
         # DEBUG: Log what we actually got back
-        import json
         print(f"[PREFERENCE_STORE DEBUG] save_preference result: {json.dumps(result, indent=2)}")
 
-        # Check for errors
-        if result and isinstance(result, dict) and result.get("error"):
-            print(f"[PREFERENCE_STORE DEBUG] Error detected: {result.get('error')}")
+        # Check for errors - check actual MCP sqlite tool response structure
+        if not result:
+            print("[PREFERENCE_STORE DEBUG] Result is None/empty - returning False")
             return False
+        if isinstance(result, dict):
+            # Check for isError flag (MCP sqlite tool sets this)
+            if result.get("isError") == True:
+                print(f"[PREFERENCE_STORE DEBUG] isError=true detected: {result.get('error_message_if_operation_failed')}")
+                return False
+            # Check operation_was_successful flag
+            if result.get("operation_was_successful") == False:
+                print(f"[PREFERENCE_STORE DEBUG] operation_was_successful=false: {result.get('error_message_if_operation_failed')}")
+                return False
+            # Check for error field
+            if result.get("error"):
+                print(f"[PREFERENCE_STORE DEBUG] Error field detected: {result.get('error')}")
+                return False
 
         print("[PREFERENCE_STORE DEBUG] All checks passed - returning True")
         return True
