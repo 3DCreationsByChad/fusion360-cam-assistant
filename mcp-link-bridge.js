@@ -169,6 +169,10 @@ async function sendToServer(method, params) {
 
   const body = JSON.stringify(request);
 
+  log(`Sending request to ${sseConnection.messageEndpoint}`);
+  log(`Request ID: ${requestId}, Method: ${method}`);
+  log(`Request body: ${body.substring(0, 200)}...`);
+
   return new Promise((resolve, reject) => {
     const options = {
       hostname: serverUrl.hostname,
@@ -184,6 +188,7 @@ async function sendToServer(method, params) {
 
     const client = isHttps ? https : http;
     const req = client.request(options, (res) => {
+      log(`POST response status: ${res.statusCode}`);
       // Accept both 200 (OK) and 202 (Accepted) as valid responses
       if (res.statusCode !== 200 && res.statusCode !== 202) {
         reject(new Error(`HTTP ${res.statusCode}`));
@@ -192,11 +197,14 @@ async function sendToServer(method, params) {
 
       // Store resolver for when response comes via SSE
       pendingRequests.set(requestId, resolve);
+      log(`Waiting for response via SSE for request ID: ${requestId}`);
+      log(`Pending requests count: ${pendingRequests.size}`);
 
       // Timeout after 30 seconds
       setTimeout(() => {
         if (pendingRequests.has(requestId)) {
           pendingRequests.delete(requestId);
+          log(`Request ${requestId} timed out after 30 seconds`);
           reject(new Error('Request timeout'));
         }
       }, 30000);
