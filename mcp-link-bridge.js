@@ -75,6 +75,7 @@ async function connectSSE() {
       let buffer = '';
       let sessionId = null;
       let messageEndpoint = null;
+      let resolved = false;
 
       res.on('data', (chunk) => {
         buffer += chunk.toString();
@@ -95,6 +96,18 @@ async function connectSSE() {
               }
               log(`Session ID: ${sessionId}`);
               log(`Message endpoint: ${messageEndpoint}`);
+
+              // Store connection info and resolve NOW that we have the endpoint
+              if (!resolved) {
+                sseConnection = {
+                  sessionId,
+                  messageEndpoint,
+                  req,
+                  response: res
+                };
+                resolved = true;
+                resolve(sseConnection);
+              }
             } else {
               // Handle JSON messages
               log(`SSE data received: ${data.substring(0, 200)}...`);
@@ -130,15 +143,6 @@ async function connectSSE() {
         log('SSE connection closed');
         sseConnection = null;
       });
-
-      // Store connection info
-      sseConnection = {
-        sessionId,
-        messageEndpoint,
-        req
-      };
-
-      resolve(sseConnection);
     });
 
     req.on('error', (err) => {
