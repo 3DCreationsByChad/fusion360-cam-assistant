@@ -12,6 +12,31 @@ Per CONTEXT.md:
 """
 
 from typing import Dict, Any, Optional, Callable
+import json
+
+
+def _unwrap_mcp_result(result):
+    """
+    Unwrap JSON-RPC response from MCP client and parse nested JSON.
+
+    MCP client returns: {"jsonrpc": "2.0", "id": "...", "result": {...}}
+    Then extracts and parses the inner JSON from content[0]["text"] if present.
+    """
+    # First unwrap JSON-RPC wrapper
+    if isinstance(result, dict) and 'result' in result and 'jsonrpc' in result:
+        result = result['result']
+
+    # Then parse inner JSON string from content[0]["text"] (MCP sqlite tool format)
+    if isinstance(result, dict) and 'content' in result:
+        content = result.get('content', [])
+        if content and len(content) > 0 and isinstance(content[0], dict) and 'text' in content[0]:
+            try:
+                inner_json_str = content[0]['text']
+                result = json.loads(inner_json_str)
+            except (json.JSONDecodeError, KeyError):
+                pass  # If parsing fails, return as-is
+
+    return result
 
 
 # =============================================================================
@@ -67,7 +92,7 @@ def initialize_strategy_schema(mcp_call_func: Callable) -> bool:
             "input": {
                 "database": CAM_STRATEGY_DATABASE,
                 "sql": STRATEGY_PREFERENCES_SCHEMA,
-                "params": [],
+                "bindings": {},
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         })
@@ -117,23 +142,26 @@ def get_strategy_preference(
     feature_key = feature_type.lower().strip()
 
     try:
-        result = mcp_call_func("sqlite", {
+        result = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
                 "database": CAM_STRATEGY_DATABASE,
                 "sql": """
                     SELECT preferred_roughing_op, preferred_finishing_op,
                            preferred_tool_diameter_mm, confidence_score
                     FROM cam_strategy_preferences
-                    WHERE material = ? AND feature_type = ?
+                    WHERE material = :material AND feature_type = :feature_type
                 """,
-                "params": [material_key, feature_key],
+                "bindings": {
+                    "material": material_key,
+                    "feature_type": feature_key
+                },
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         # Parse result - expect list of rows
         if result and isinstance(result, dict):
-            rows = result.get("rows") or result.get("data") or result.get("result")
+            rows = result.get("data_rows_from_result_set") or result.get("rows") or result.get("data") or result.get("result")
             if rows and len(rows) > 0:
                 row = rows[0]
                 # Handle both list and dict row formats
@@ -220,17 +248,18 @@ def save_strategy_preference(
                     INSERT OR REPLACE INTO cam_strategy_preferences
                     (material, feature_type, preferred_roughing_op, preferred_finishing_op,
                      preferred_tool_diameter_mm, confidence_score, times_used, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    VALUES (:material, :feature_type, :roughing_op, :finishing_op,
+                            :tool_diameter, :confidence, :times_used, CURRENT_TIMESTAMP)
                 """,
-                "params": [
-                    material_key,
-                    feature_key,
-                    roughing_op,
-                    finishing_op,
-                    tool_diameter,
-                    confidence,
-                    times_used
-                ],
+                "bindings": {
+                    "material": material_key,
+                    "feature_type": feature_key,
+                    "roughing_op": roughing_op,
+                    "finishing_op": finishing_op,
+                    "tool_diameter": tool_diameter,
+                    "confidence": confidence,
+                    "times_used": times_used
+                },
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         })

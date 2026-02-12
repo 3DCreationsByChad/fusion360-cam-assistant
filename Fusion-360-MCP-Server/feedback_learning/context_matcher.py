@@ -21,8 +21,8 @@ import json
 # MCP bridge SQLite tool unlock token (from sqlite MCP server docs)
 SQLITE_TOOL_UNLOCK_TOKEN = "8d8f7853"
 
-# Import database constant from feedback_store
-from .feedback_store import CAM_FEEDBACK_DATABASE
+# Import database constant and helper from feedback_store
+from .feedback_store import CAM_FEEDBACK_DATABASE, _unwrap_mcp_result
 
 
 # =============================================================================
@@ -69,7 +69,7 @@ def get_matching_feedback(
 
     try:
         # Query matching feedback with LIKE for material family matching
-        result = mcp_call_func("sqlite", {
+        result = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
                 "database": CAM_FEEDBACK_DATABASE,
                 "sql": """
@@ -77,25 +77,25 @@ def get_matching_feedback(
                            context_snapshot, suggestion_payload, user_choice,
                            feedback_type, feedback_note, confidence_before, created_at
                     FROM cam_feedback_history
-                    WHERE operation_type = ?
-                      AND material LIKE ?
-                      AND geometry_type = ?
+                    WHERE operation_type = :operation_type
+                      AND material LIKE :material_pattern
+                      AND geometry_type = :geometry_type
                     ORDER BY created_at DESC
-                    LIMIT ?
+                    LIMIT :limit
                 """,
-                "params": [
-                    operation_type,
-                    f"%{material_key}%",  # LIKE pattern for family matching
-                    geometry_key,
-                    limit
-                ],
+                "bindings": {
+                    "operation_type": operation_type,
+                    "material_pattern": f"%{material_key}%",  # LIKE pattern for family matching
+                    "geometry_type": geometry_key,
+                    "limit": limit
+                },
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
-        })
+        }))
 
         feedback_events = []
         if result and isinstance(result, dict):
-            rows = result.get("rows") or result.get("data") or result.get("result")
+            rows = result.get("data_rows_from_result_set") or result.get("rows") or result.get("data") or result.get("result")
             if rows:
                 for row in rows:
                     # Handle both dict and list row formats

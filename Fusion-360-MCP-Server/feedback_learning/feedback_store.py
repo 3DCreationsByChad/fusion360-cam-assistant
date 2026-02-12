@@ -21,30 +21,32 @@ Functions:
 """
 
 from typing import Dict, Any, Optional, Callable
-
-
-def _unwrap_mcp_result(mcp_result):
-    """Unwrap JSON-RPC response: {'jsonrpc': '2.0', 'result': {...}} -> {...}"""
-    if isinstance(mcp_result, dict) and 'result' in mcp_result and 'jsonrpc' in mcp_result:
-        return mcp_result['result']
-    return mcp_result
-
 import json
 import csv
 from io import StringIO
 
 
-
-
 def _unwrap_mcp_result(result):
     """
-    Unwrap JSON-RPC response from MCP client.
-    
+    Unwrap JSON-RPC response from MCP client and parse nested JSON.
+
     MCP client returns: {"jsonrpc": "2.0", "id": "...", "result": {...}}
-    We need the inner "result" object.
+    Then extracts and parses the inner JSON from content[0]["text"] if present.
     """
+    # First unwrap JSON-RPC wrapper
     if isinstance(result, dict) and 'result' in result and 'jsonrpc' in result:
-        return result['result']
+        result = result['result']
+
+    # Then parse inner JSON string from content[0]["text"] (MCP sqlite tool format)
+    if isinstance(result, dict) and 'content' in result:
+        content = result.get('content', [])
+        if content and len(content) > 0 and isinstance(content[0], dict) and 'text' in content[0]:
+            try:
+                inner_json_str = content[0]['text']
+                result = json.loads(inner_json_str)
+            except (json.JSONDecodeError, KeyError):
+                pass  # If parsing fails, return as-is
+
     return result
 
 
@@ -117,7 +119,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
             "input": {
                 "database": CAM_FEEDBACK_DATABASE,
                 "sql": FEEDBACK_HISTORY_SCHEMA,
-                "params": [],
+                "bindings": {},
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -127,7 +129,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
             "input": {
                 "database": CAM_FEEDBACK_DATABASE,
                 "sql": INDEX_MATERIAL_GEOMETRY,
-                "params": [],
+                "bindings": {},
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -136,7 +138,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
             "input": {
                 "database": CAM_FEEDBACK_DATABASE,
                 "sql": INDEX_OPERATION_TYPE,
-                "params": [],
+                "bindings": {},
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -145,7 +147,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
             "input": {
                 "database": CAM_FEEDBACK_DATABASE,
                 "sql": INDEX_CREATED_AT,
-                "params": [],
+                "bindings": {},
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -229,19 +231,21 @@ def record_feedback(
                     (operation_type, material, geometry_type, context_snapshot,
                      suggestion_payload, user_choice, feedback_type, feedback_note,
                      confidence_before)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (:operation_type, :material, :geometry_type, :context_snapshot,
+                            :suggestion_payload, :user_choice, :feedback_type, :feedback_note,
+                            :confidence_before)
                 """,
-                "params": [
-                    operation_type,
-                    material_key,
-                    geometry_key,
-                    context_json,
-                    suggestion_json,
-                    user_choice_json,
-                    feedback_type,
-                    note,
-                    confidence_before
-                ],
+                "bindings": {
+                    "operation_type": operation_type,
+                    "material": material_key,
+                    "geometry_type": geometry_key,
+                    "context_snapshot": context_json,
+                    "suggestion_payload": suggestion_json,
+                    "user_choice": user_choice_json,
+                    "feedback_type": feedback_type,
+                    "feedback_note": note,
+                    "confidence_before": confidence_before
+                },
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -309,10 +313,10 @@ def get_feedback_statistics(
     try:
         # Build WHERE clause if filtering by operation_type
         where_clause = ""
-        params = []
+        bindings = {}
         if operation_type:
-            where_clause = "WHERE operation_type = ?"
-            params = [operation_type]
+            where_clause = "WHERE operation_type = :operation_type"
+            bindings = {"operation_type": operation_type}
 
         # Overall statistics
         overall_result = _unwrap_mcp_result(mcp_call_func("sqlite", {
@@ -326,14 +330,19 @@ def get_feedback_statistics(
                     FROM cam_feedback_history
                     {where_clause}
                 """,
-                "params": params,
+                "bindings": bindings,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
 
+        # DEBUG
+        print(f"[FEEDBACK_STATS DEBUG] overall_result after unwrap: {json.dumps(overall_result, indent=2) if overall_result else 'None'}")
+
         overall = {"total_count": 0, "accept_count": 0, "acceptance_rate": 0.0}
         if overall_result and isinstance(overall_result, dict):
-            rows = overall_result.get("rows") or overall_result.get("data") or overall_result.get("result")
+            print(f"[FEEDBACK_STATS DEBUG] overall_result keys: {list(overall_result.keys())}")
+            rows = overall_result.get("data_rows_from_result_set") or overall_result.get("rows") or overall_result.get("data") or overall_result.get("result")
+            print(f"[FEEDBACK_STATS DEBUG] rows: {rows}")
             if rows and len(rows) > 0:
                 row = rows[0]
                 if isinstance(row, dict):
@@ -364,14 +373,14 @@ def get_feedback_statistics(
                     GROUP BY material
                     ORDER BY count DESC
                 """,
-                "params": params,
+                "bindings": bindings,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
 
         by_material = []
         if material_result and isinstance(material_result, dict):
-            rows = material_result.get("rows") or material_result.get("data") or material_result.get("result")
+            rows = material_result.get("data_rows_from_result_set") or material_result.get("rows") or material_result.get("data") or material_result.get("result")
             if rows:
                 for row in rows:
                     if isinstance(row, dict):
@@ -402,14 +411,14 @@ def get_feedback_statistics(
                     GROUP BY geometry_type
                     ORDER BY count DESC
                 """,
-                "params": params,
+                "bindings": bindings,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
 
         by_geometry_type = []
         if geometry_result and isinstance(geometry_result, dict):
-            rows = geometry_result.get("rows") or geometry_result.get("data") or geometry_result.get("result")
+            rows = geometry_result.get("data_rows_from_result_set") or geometry_result.get("rows") or geometry_result.get("data") or geometry_result.get("result")
             if rows:
                 for row in rows:
                     if isinstance(row, dict):
@@ -441,13 +450,13 @@ def get_feedback_statistics(
                         GROUP BY operation_type
                         ORDER BY count DESC
                     """,
-                    "params": [],
+                    "bindings": {},
                     "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
                 }
             }))
 
             if operation_result and isinstance(operation_result, dict):
-                rows = operation_result.get("rows") or operation_result.get("data") or operation_result.get("result")
+                rows = operation_result.get("data_rows_from_result_set") or operation_result.get("rows") or operation_result.get("data") or operation_result.get("result")
                 if rows:
                     for row in rows:
                         if isinstance(row, dict):
@@ -470,7 +479,10 @@ def get_feedback_statistics(
             "by_operation_type": by_operation_type
         }
 
-    except Exception:
+    except Exception as e:
+        import traceback
+        print(f"[FEEDBACK_STATS ERROR] Exception caught: {str(e)}")
+        print(f"[FEEDBACK_STATS ERROR] Traceback: {traceback.format_exc()}")
         return {
             "overall": {"total_count": 0, "accept_count": 0, "acceptance_rate": 0.0},
             "by_material": [],
@@ -507,10 +519,10 @@ def export_feedback_history(
     try:
         # Build WHERE clause if filtering by operation_type
         where_clause = ""
-        params = []
+        bindings = {}
         if operation_type:
-            where_clause = "WHERE operation_type = ?"
-            params = [operation_type]
+            where_clause = "WHERE operation_type = :operation_type"
+            bindings = {"operation_type": operation_type}
 
         # Query all feedback rows
         result = _unwrap_mcp_result(mcp_call_func("sqlite", {
@@ -524,14 +536,14 @@ def export_feedback_history(
                     {where_clause}
                     ORDER BY created_at DESC
                 """,
-                "params": params,
+                "bindings": bindings,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
 
         rows = []
         if result and isinstance(result, dict):
-            rows_data = result.get("rows") or result.get("data") or result.get("result")
+            rows_data = result.get("data_rows_from_result_set") or result.get("rows") or result.get("data") or result.get("result")
             if rows_data:
                 for row in rows_data:
                     if isinstance(row, dict):
@@ -607,12 +619,12 @@ def clear_feedback_history(
     try:
         # Build DELETE query
         if operation_type:
-            sql = "DELETE FROM cam_feedback_history WHERE operation_type = ?"
-            params = [operation_type]
+            sql = "DELETE FROM cam_feedback_history WHERE operation_type = :operation_type"
+            bindings = {"operation_type": operation_type}
             cleared_type = operation_type
         else:
             sql = "DELETE FROM cam_feedback_history"
-            params = []
+            bindings = {}
             cleared_type = "all"
 
         # Execute delete
@@ -620,7 +632,7 @@ def clear_feedback_history(
             "input": {
                 "database": CAM_FEEDBACK_DATABASE,
                 "sql": sql,
-                "params": params,
+                "bindings": bindings,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -631,7 +643,7 @@ def clear_feedback_history(
             "input": {
                 "database": CAM_FEEDBACK_DATABASE,
                 "sql": "SELECT COUNT(*) FROM cam_feedback_history",
-                "params": [],
+                "bindings": {},
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))

@@ -84,7 +84,7 @@ def initialize_schema(mcp_call_func: Callable) -> bool:
             "input": {
                 "database": CAM_PREFERENCES_DATABASE,
                 "sql": STOCK_PREFERENCES_SCHEMA,
-                "params": [],
+                "bindings": {},
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         })
@@ -94,7 +94,7 @@ def initialize_schema(mcp_call_func: Callable) -> bool:
             "input": {
                 "database": CAM_PREFERENCES_DATABASE,
                 "sql": MACHINE_PROFILES_SCHEMA,
-                "params": [],
+                "bindings": {},
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         })
@@ -154,16 +154,38 @@ def get_preference(
                     SELECT offsets_xy_mm, offsets_z_mm, preferred_orientation,
                            stock_shape, machining_allowance_mm
                     FROM cam_stock_preferences
-                    WHERE material = ? AND geometry_type = ?
+                    WHERE material = :material AND geometry_type = :geometry_type
                 """,
-                "params": [material_key, geometry_key],
+                "bindings": {
+                    "material": material_key,
+                    "geometry_type": geometry_key
+                },
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         })
 
-        # Parse result - expect list of rows
+        # DEBUG: Log what we got back
+        print(f"[PREFERENCE_STORE DEBUG] get_preference raw result: {json.dumps(result, indent=2) if result else 'None'}")
+
+        # Check for double-nested result structure (MCP response wrapping)
+        if isinstance(result, dict) and 'result' in result:
+            result = result['result']
+            print(f"[PREFERENCE_STORE DEBUG] After unwrap: {json.dumps(result, indent=2)}")
+
+        # Parse the inner JSON string from content[0]["text"]
+        if isinstance(result, dict) and 'content' in result:
+            content = result.get('content', [])
+            if content and len(content) > 0 and 'text' in content[0]:
+                inner_json_str = content[0]['text']
+                print(f"[PREFERENCE_STORE DEBUG] Parsing inner JSON: {inner_json_str[:200]}...")
+                result = json.loads(inner_json_str)
+                print(f"[PREFERENCE_STORE DEBUG] Parsed result keys: {list(result.keys())}")
+
+        # Parse result - look for data_rows_from_result_set (sqlite tool format)
         if result and isinstance(result, dict):
-            rows = result.get("rows") or result.get("data") or result.get("result")
+            print(f"[PREFERENCE_STORE DEBUG] Result keys: {list(result.keys())}")
+            rows = result.get("data_rows_from_result_set") or result.get("rows") or result.get("data") or result.get("result")
+            print(f"[PREFERENCE_STORE DEBUG] Rows found: {rows}")
             if rows and len(rows) > 0:
                 row = rows[0]
                 # Handle both list and dict row formats
@@ -244,17 +266,19 @@ def save_preference(
                     (material, geometry_type, offsets_xy_mm, offsets_z_mm,
                      preferred_orientation, stock_shape, machining_allowance_mm,
                      updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    VALUES (:material, :geometry_type, :offsets_xy, :offsets_z,
+                            :preferred_orientation, :stock_shape, :machining_allowance,
+                            CURRENT_TIMESTAMP)
                 """,
-                "params": [
-                    material_key,
-                    geometry_key,
-                    offsets_xy,
-                    offsets_z,
-                    preferred_orientation,
-                    stock_shape,
-                    machining_allowance
-                ],
+                "bindings": {
+                    "material": material_key,
+                    "geometry_type": geometry_key,
+                    "offsets_xy": offsets_xy,
+                    "offsets_z": offsets_z,
+                    "preferred_orientation": preferred_orientation,
+                    "stock_shape": stock_shape,
+                    "machining_allowance": machining_allowance
+                },
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         })
