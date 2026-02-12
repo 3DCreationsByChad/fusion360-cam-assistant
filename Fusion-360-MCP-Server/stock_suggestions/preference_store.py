@@ -164,28 +164,20 @@ def get_preference(
             }
         })
 
-        # DEBUG: Log what we got back
-        print(f"[PREFERENCE_STORE DEBUG] get_preference raw result: {json.dumps(result, indent=2) if result else 'None'}")
-
         # Check for double-nested result structure (MCP response wrapping)
         if isinstance(result, dict) and 'result' in result:
             result = result['result']
-            print(f"[PREFERENCE_STORE DEBUG] After unwrap: {json.dumps(result, indent=2)}")
 
         # Parse the inner JSON string from content[0]["text"]
         if isinstance(result, dict) and 'content' in result:
             content = result.get('content', [])
             if content and len(content) > 0 and 'text' in content[0]:
                 inner_json_str = content[0]['text']
-                print(f"[PREFERENCE_STORE DEBUG] Parsing inner JSON: {inner_json_str[:200]}...")
                 result = json.loads(inner_json_str)
-                print(f"[PREFERENCE_STORE DEBUG] Parsed result keys: {list(result.keys())}")
 
         # Parse result - look for data_rows_from_result_set (sqlite tool format)
         if result and isinstance(result, dict):
-            print(f"[PREFERENCE_STORE DEBUG] Result keys: {list(result.keys())}")
             rows = result.get("data_rows_from_result_set") or result.get("rows") or result.get("data") or result.get("result")
-            print(f"[PREFERENCE_STORE DEBUG] Rows found: {rows}")
             if rows and len(rows) > 0:
                 row = rows[0]
                 # Handle both list and dict row formats
@@ -283,33 +275,28 @@ def save_preference(
             }
         })
 
-        # DEBUG: Log what we actually got back
-        print(f"[PREFERENCE_STORE DEBUG] save_preference result (before unwrap): {json.dumps(result, indent=2)}")
-
         # Unwrap double-nested result (MCP response has result.result structure)
         if isinstance(result, dict) and 'result' in result:
             result = result['result']
-            print(f"[PREFERENCE_STORE DEBUG] After unwrap: {json.dumps(result, indent=2)}")
 
         # Check for errors - check actual MCP sqlite tool response structure
         if not result:
-            print("[PREFERENCE_STORE DEBUG] Result is None/empty - returning False")
+            print("[PREFERENCE_STORE ERROR] Failed to save preference - empty result")
             return False
         if isinstance(result, dict):
             # Check for isError flag (MCP sqlite tool sets this)
             if result.get("isError") == True:
-                print(f"[PREFERENCE_STORE DEBUG] isError=true detected: {result.get('error_message_if_operation_failed')}")
+                print(f"[PREFERENCE_STORE ERROR] Failed to save: {result.get('error_message_if_operation_failed')}")
                 return False
             # Check operation_was_successful flag
             if result.get("operation_was_successful") == False:
-                print(f"[PREFERENCE_STORE DEBUG] operation_was_successful=false: {result.get('error_message_if_operation_failed')}")
+                print(f"[PREFERENCE_STORE ERROR] Operation failed: {result.get('error_message_if_operation_failed')}")
                 return False
             # Check for error field
             if result.get("error"):
-                print(f"[PREFERENCE_STORE DEBUG] Error field detected: {result.get('error')}")
+                print(f"[PREFERENCE_STORE ERROR] Database error: {result.get('error')}")
                 return False
 
-        print("[PREFERENCE_STORE DEBUG] All checks passed - returning True")
         return True
 
     except Exception:

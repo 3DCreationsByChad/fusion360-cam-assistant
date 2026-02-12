@@ -4,20 +4,27 @@
 
 import os
 
-# DIAGNOSTIC: This message confirms our modified code is loaded
+# Version tracking
+VERSION = "0.5.2-beta"
+VERSION_NAME = "Feedback Learning System"
+RELEASE_DATE = "2026-02-12"
+
+# Startup banner
 print("=" * 70)
-print("🔧 LOADING CONFIG.PY - CODE CHANGES ACTIVE")
+print(f"🚀 Fusion 360 CAM Assistant - v{VERSION}")
+print(f"📦 {VERSION_NAME}")
+print(f"📅 {RELEASE_DATE}")
 print("=" * 70)
 
 # Flag that indicates to run in Debug mode or not. When running in Debug mode
 # more information is written to the Text Command window. Generally, it's useful
 # to set this to True while developing an add-in and set it to False when you
 # are ready to distribute it.
-DEBUG = True
+DEBUG = False  # Set to False for beta release
 
 # MCP Debug flag - enables verbose logging for MCP connection and communication
 # Set to True for detailed MCP diagnostics, False to reduce log noise
-MCP_DEBUG = True
+MCP_DEBUG = False  # Set to False for beta release
 
 # MCP Auto-connect - if True, automatically connect to MCP server on add-in startup
 # Set to False to require manual connection via the "Connect to MCP" button
