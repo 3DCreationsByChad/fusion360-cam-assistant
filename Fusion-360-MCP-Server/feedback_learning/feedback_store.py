@@ -304,7 +304,7 @@ def get_feedback_statistics(
                     FROM cam_feedback_history
                     {where_clause}
                 """,
-                "bindings": params,
+                "params": params,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -341,7 +341,7 @@ def get_feedback_statistics(
                     GROUP BY material
                     ORDER BY count DESC
                 """,
-                "bindings": params,
+                "params": params,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -378,7 +378,7 @@ def get_feedback_statistics(
                     GROUP BY geometry_type
                     ORDER BY count DESC
                 """,
-                "bindings": params,
+                "params": params,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -498,7 +498,7 @@ def export_feedback_history(
                     {where_clause}
                     ORDER BY created_at DESC
                 """,
-                "bindings": params,
+                "params": params,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -593,7 +593,7 @@ def clear_feedback_history(
         result = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
                 "sql": sql,
-                "bindings": params,
+                "params": params,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
