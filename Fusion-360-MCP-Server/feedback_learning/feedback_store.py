@@ -116,7 +116,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
         result1 = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
                 "sql": FEEDBACK_HISTORY_SCHEMA,
-                "bindings": [],
+                "params": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -125,7 +125,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
         result2 = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
                 "sql": INDEX_MATERIAL_GEOMETRY,
-                "bindings": [],
+                "params": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -133,7 +133,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
         result3 = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
                 "sql": INDEX_OPERATION_TYPE,
-                "bindings": [],
+                "params": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -141,7 +141,7 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
         result4 = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
                 "sql": INDEX_CREATED_AT,
-                "bindings": [],
+                "params": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
@@ -226,7 +226,7 @@ def record_feedback(
                      confidence_before)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                "bindings": [
+                "params": [
                     operation_type,
                     material_key,
                     geometry_key,
@@ -416,7 +416,7 @@ def get_feedback_statistics(
                         GROUP BY operation_type
                         ORDER BY count DESC
                     """,
-                    "bindings": [],
+                    "params": [],
                     "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
                 }
             }))
@@ -603,7 +603,7 @@ def clear_feedback_history(
         count_result = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
                 "sql": "SELECT COUNT(*) FROM cam_feedback_history",
-                "bindings": [],
+                "params": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
             }
         }))
