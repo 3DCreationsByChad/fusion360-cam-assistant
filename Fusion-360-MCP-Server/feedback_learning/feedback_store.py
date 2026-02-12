@@ -84,7 +84,7 @@ ON cam_feedback_history(created_at DESC);
 """
 
 # MCP bridge SQLite tool unlock token (from mcp_bridge.py docs)
-SQLITE_TOOL_UNLOCK_TOKEN = "8d8f7853"
+SQLITE_TOOL_UNLOCK_TOKEN = "29e63eb5"
 
 # Use persistent database file for CAM feedback
 CAM_FEEDBACK_DATABASE = "@user_data/fusion360_cam_feedback.db"
