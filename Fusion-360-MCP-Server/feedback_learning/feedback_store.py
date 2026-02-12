@@ -86,8 +86,8 @@ ON cam_feedback_history(created_at DESC);
 # MCP bridge SQLite tool unlock token (from mcp_bridge.py docs)
 SQLITE_TOOL_UNLOCK_TOKEN = "29e63eb5"
 
-# Use persistent database file for CAM feedback
-CAM_FEEDBACK_DATABASE = "@user_data/fusion360_cam_feedback.db"
+# Note: Using default MCP database (no custom path needed)
+# The MCP sqlite tool uses a default database shared with other CAM modules
 
 
 # =============================================================================
@@ -115,7 +115,6 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
         # Create table
         result1 = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": FEEDBACK_HISTORY_SCHEMA,
                 "bindings": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
@@ -125,7 +124,6 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
         # Create indexes
         result2 = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": INDEX_MATERIAL_GEOMETRY,
                 "bindings": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
@@ -134,7 +132,6 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
 
         result3 = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": INDEX_OPERATION_TYPE,
                 "bindings": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
@@ -143,7 +140,6 @@ def initialize_feedback_schema(mcp_call_func: Callable) -> bool:
 
         result4 = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": INDEX_CREATED_AT,
                 "bindings": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
@@ -223,7 +219,6 @@ def record_feedback(
         # Insert feedback record
         result = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": """
                     INSERT INTO cam_feedback_history
                     (operation_type, material, geometry_type, context_snapshot,
@@ -301,7 +296,6 @@ def get_feedback_statistics(
         # Overall statistics
         overall_result = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": f"""
                     SELECT
                         COUNT(*) as total_count,
@@ -336,7 +330,6 @@ def get_feedback_statistics(
         # By material breakdown
         material_result = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": f"""
                     SELECT
                         material,
@@ -374,7 +367,6 @@ def get_feedback_statistics(
         # By geometry_type breakdown
         geometry_result = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": f"""
                     SELECT
                         geometry_type,
@@ -414,7 +406,6 @@ def get_feedback_statistics(
         if not operation_type:
             operation_result = _unwrap_mcp_result(mcp_call_func("sqlite", {
                 "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": """
                         SELECT
                             operation_type,
@@ -499,7 +490,6 @@ def export_feedback_history(
         # Query all feedback rows
         result = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": f"""
                     SELECT id, operation_type, material, geometry_type,
                            context_snapshot, suggestion_payload, user_choice,
@@ -602,7 +592,6 @@ def clear_feedback_history(
         # Execute delete
         result = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": sql,
                 "bindings": params,
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
@@ -613,7 +602,6 @@ def clear_feedback_history(
         # Query to count remaining rows
         count_result = _unwrap_mcp_result(mcp_call_func("sqlite", {
             "input": {
-                "database": CAM_FEEDBACK_DATABASE,
                 "sql": "SELECT COUNT(*) FROM cam_feedback_history",
                 "bindings": [],
                 "tool_unlock_token": SQLITE_TOOL_UNLOCK_TOKEN
