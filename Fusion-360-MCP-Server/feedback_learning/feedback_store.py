@@ -247,7 +247,12 @@ def record_feedback(
         }))
 
         # DEBUG: Log what we actually got back
-        print(f"[FEEDBACK_STORE DEBUG] record_feedback result: {json.dumps(result, indent=2)}")
+        print(f"[FEEDBACK_STORE DEBUG] record_feedback result (before unwrap): {json.dumps(result, indent=2)}")
+
+        # Unwrap double-nested result (MCP response has result.result structure)
+        if isinstance(result, dict) and 'result' in result:
+            result = result['result']
+            print(f"[FEEDBACK_STORE DEBUG] After unwrap: {json.dumps(result, indent=2)}")
 
         # Check for errors - check actual MCP sqlite tool response structure
         if not result:
