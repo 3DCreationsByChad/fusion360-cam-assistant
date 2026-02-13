@@ -111,9 +111,8 @@ Then restart add-in in Fusion (Stop → Run).
 
 ## 💬 Support
 
-- **Facebook Group:** [Your group link]
-- **GitHub Issues:** [Your repo]/issues
-- **Direct Contact:** [Your contact method]
+- **GitHub Issues:** Fusion360-cam-assistant/issues
+- **Direct Contact:** 3dcreationsbychad on Discord
 
 ## 🙏 Thank You!
 
